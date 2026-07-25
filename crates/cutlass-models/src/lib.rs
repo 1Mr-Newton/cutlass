@@ -49,11 +49,12 @@ pub type Map<K, V> = rustc_hash::FxHashMap<K, V>;
 
 pub use capabilities::{ClipAction, ClipCapabilities};
 pub use caption::{
-    CaptionCue, CaptionFileFormat, CaptionGroup, CaptionHighlight, CaptionHighlightMode,
-    CaptionLayout, CaptionPlateSpec, CaptionShadowSpec, CaptionSource, CaptionStrokeSpec,
-    CaptionStyle, CaptionStyleScope, CaptionTemplateSpec, CaptionWord, DEFAULT_SAFE_AREA_BOTTOM,
-    MAX_CAPTION_CHARS_PER_LINE, MAX_CAPTION_DURATION_MS, MAX_CAPTION_LINES, MAX_CAPTION_WORDS,
-    MAX_HIGHLIGHT_SCALE, MIN_CAPTION_CHARS_PER_LINE, MIN_HIGHLIGHT_SCALE, caption_template_catalog,
+    CaptionCue, CaptionCueSpec, CaptionFileFormat, CaptionGroup, CaptionGroupSpec,
+    CaptionHighlight, CaptionHighlightMode, CaptionLayout, CaptionPlateSpec, CaptionShadowSpec,
+    CaptionSource, CaptionStrokeSpec, CaptionStyle, CaptionStyleScope, CaptionTemplateSpec,
+    CaptionWord, DEFAULT_SAFE_AREA_BOTTOM, MAX_CAPTION_CHARS_PER_LINE, MAX_CAPTION_CUES,
+    MAX_CAPTION_DURATION_MS, MAX_CAPTION_LINES, MAX_CAPTION_WORDS, MAX_HIGHLIGHT_SCALE,
+    MIN_CAPTION_CHARS_PER_LINE, MIN_HIGHLIGHT_SCALE, caption_template_catalog,
     caption_template_spec,
 };
 pub use clip::{
