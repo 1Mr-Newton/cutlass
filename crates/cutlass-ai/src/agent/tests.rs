@@ -149,6 +149,7 @@ fn system_prompt_carries_state_and_trim_rule() {
         duration_seconds: 10.0,
         tracks: vec![],
         markers: vec![],
+        captions: vec![],
         canvas: crate::describe::CanvasSummary {
             width: 1920,
             height: 1080,
@@ -197,6 +198,7 @@ fn system_prompt_injects_rules_and_skill_index_only() {
         duration_seconds: 10.0,
         tracks: vec![],
         markers: vec![],
+        captions: vec![],
         canvas: crate::describe::CanvasSummary {
             width: 1920,
             height: 1080,

@@ -595,11 +595,128 @@ pub fn describe_action(command: &WireCommand, outcome: Option<&EditOutcome>) -> 
             }
             format!("set canvas {}", parts.join(", "))
         }
+        WireCommand::AddCaptions(a) => {
+            let look = a
+                .template
+                .as_deref()
+                .map(|t| format!(" in the {t} look"))
+                .unwrap_or_default();
+            let span = match (a.cues.first(), a.cues.last()) {
+                (Some(first), Some(last)) => format!(
+                    " from {} to {}",
+                    secs(first.start),
+                    secs(last.start + last.duration)
+                ),
+                _ => String::new(),
+            };
+            format!(
+                "added {} caption line{}{span} on track {}{look}",
+                a.cues.len(),
+                if a.cues.len() == 1 { "" } else { "s" },
+                a.track,
+            )
+        }
+        WireCommand::RemoveCaptions(a) => {
+            format!("removed caption group {} and its lines", a.group)
+        }
+        WireCommand::SetCaptionTemplate(a) => format!(
+            "restyled caption group {} in the {} look",
+            a.group, a.template
+        ),
+        WireCommand::SetCaptionStyle(a) => {
+            let mut parts = Vec::new();
+            if let Some(font) = &a.font {
+                parts.push(format!("font '{font}'"));
+            }
+            if let Some(size) = a.size {
+                parts.push(format!("size {size:.0}"));
+            }
+            if let Some(fill) = a.fill {
+                parts.push(format!("fill {}", rgba(fill)));
+            }
+            if let Some(bold) = a.bold {
+                parts.push(if bold { "bold" } else { "not bold" }.into());
+            }
+            if let Some(italic) = a.italic {
+                parts.push(if italic { "italic" } else { "upright" }.into());
+            }
+            if let Some(upper) = a.uppercase {
+                parts.push(if upper { "uppercase" } else { "mixed case" }.into());
+            }
+            if let Some(y) = a.position_y {
+                parts.push(format!("position y {y:.2}"));
+            }
+            if let Some(scale) = a.scale {
+                parts.push(format!("scale {}", percent_with_raw(scale)));
+            }
+            if parts.is_empty() {
+                parts.push("unchanged".into());
+            }
+            format!("styled caption group {} {}", a.group, parts.join(", "))
+        }
+        WireCommand::SetCaptionLayout(a) => {
+            let mut parts = Vec::new();
+            if let Some(chars) = a.max_chars_per_line {
+                parts.push(format!("{chars} chars/line"));
+            }
+            if let Some(lines) = a.max_lines {
+                parts.push(format!("up to {lines} lines"));
+            }
+            if let Some(min) = a.min_duration {
+                parts.push(format!("min {}", secs(min)));
+            }
+            if let Some(max) = a.max_duration {
+                parts.push(format!("max {}", secs(max)));
+            }
+            if let Some(gap) = a.min_gap {
+                parts.push(format!("{} gap", secs(gap)));
+            }
+            if let Some(safe) = a.safe_area_bottom {
+                parts.push(format!("safe area {}", percent_with_raw(safe)));
+            }
+            if parts.is_empty() {
+                parts.push("unchanged".into());
+            }
+            format!("laid out caption group {} {}", a.group, parts.join(", "))
+        }
+        WireCommand::SetCaptionHighlight(a) => match a.mode {
+            wire::WireCaptionHighlightMode::Off => {
+                format!("cleared caption group {} highlight", a.group)
+            }
+            mode => {
+                let fill = a
+                    .fill
+                    .map(|c| format!(" in {}", rgba(c)))
+                    .unwrap_or_default();
+                format!(
+                    "highlighted caption group {} per {}{fill}",
+                    a.group,
+                    match mode {
+                        wire::WireCaptionHighlightMode::Line => "line",
+                        _ => "word",
+                    },
+                )
+            }
+        },
+        WireCommand::SetCaptionText(a) => {
+            format!("reworded caption cue {} to '{}'", a.clip, a.text)
+        }
+        WireCommand::MergeCaptions(a) => format!(
+            "merged caption cues {}",
+            a.clips
+                .iter()
+                .map(|c| c.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     };
     match outcome {
         Some(EditOutcome::Created(id)) => line.push_str(&format!(" (new clip {})", id.raw())),
         Some(EditOutcome::CreatedTrack(id)) => line.push_str(&format!(" (track {})", id.raw())),
         Some(EditOutcome::CreatedMarker(id)) => line.push_str(&format!(" (marker {})", id.raw())),
+        Some(EditOutcome::CreatedCaptionGroup(id)) => {
+            line.push_str(&format!(" (caption group {})", id.raw()))
+        }
         _ => {}
     }
     line

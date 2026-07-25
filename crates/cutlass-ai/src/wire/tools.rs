@@ -215,7 +215,7 @@ tools! {
     "set_audio_role" => SetAudioRole(SetAudioRole),
         "Tag an audio-lane clip: music, sfx, voiceover, extracted. null clears.";
     "split_clip" => SplitClip(SplitClip),
-        "Split a clip at timeline seconds into two abutting clips.";
+        "Split a clip at timeline seconds into two abutting clips. On a caption cue the line's text and word timings are split too.";
     "trim_clip" => TrimClip(TrimClip),
         "Re-place/trim to new start and duration (seconds). Media head trim advances source in-point.";
     "move_clip" => MoveClip(MoveClip),
@@ -248,4 +248,20 @@ tools! {
         "Move, rename, or recolor a ruler marker. Omitted fields keep.";
     "set_canvas" => SetCanvas(SetCanvas),
         "Set canvas aspect ('auto'|'16:9'|'9:16'|'1:1'|'4:5'|'21:9') and/or background color. Omitted keep.";
+    "add_captions" => AddCaptions(AddCaptions),
+        "Lay caption lines on a text track as one group (times in seconds), optionally in a template look. Each line is a text clip; the group makes restyling one call.";
+    "remove_captions" => RemoveCaptions(RemoveCaptions),
+        "Remove a caption group and every line it owns.";
+    "set_caption_template" => SetCaptionTemplate(SetCaptionTemplate),
+        "Restyle a whole caption group from the catalog: clean, bold_box, karaoke_pop, glow, outline, multiline.";
+    "set_caption_style" => SetCaptionStyle(SetCaptionStyle),
+        "Adjust a caption group's shared look (font, size, fill, bold/italic, uppercase, vertical position, scale). Omitted fields keep.";
+    "set_caption_layout" => SetCaptionLayout(SetCaptionLayout),
+        "Set a caption group's line-breaking rules and safe area (chars/line, max lines, min/max duration, gap). Moves lines into the new safe area; does not re-split them.";
+    "set_caption_highlight" => SetCaptionHighlight(SetCaptionHighlight),
+        "Karaoke highlight for a caption group: mode off/word/line, fill, plate color and rounding, emphasis scale. Needs per-word timings (auto captions).";
+    "set_caption_text" => SetCaptionText(SetCaptionText),
+        "Fix one caption line's wording (and speaker); word timings are remapped onto the new text.";
+    "merge_captions" => MergeCaptions(MergeCaptions),
+        "Merge caption lines of one group into the earliest, joining their text and timings.";
 }

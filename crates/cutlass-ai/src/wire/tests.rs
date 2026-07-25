@@ -312,16 +312,19 @@ fn generator_wire_format_is_tagged_lowercase() {
 
 #[test]
 fn remap_ids_rewrites_only_mapped_references() {
-    let clip_map = std::collections::HashMap::from([(10u64, 99u64)]);
-    let track_map = std::collections::HashMap::from([(2u64, 7u64)]);
-    let marker_map = std::collections::HashMap::from([(4u64, 40u64)]);
+    let ids = IdRemap {
+        clips: std::collections::HashMap::from([(10u64, 99u64)]),
+        tracks: std::collections::HashMap::from([(2u64, 7u64)]),
+        markers: std::collections::HashMap::from([(4u64, 40u64)]),
+        caption_groups: std::collections::HashMap::from([(5u64, 50u64)]),
+    };
 
     let mut mv = WireCommand::MoveClip(MoveClip {
         clip: 10,
         to_track: 2,
         start: 1.0,
     });
-    mv.remap_ids(&clip_map, &track_map, &marker_map);
+    mv.remap_ids(&ids);
     assert_eq!(
         mv,
         WireCommand::MoveClip(MoveClip {
@@ -336,7 +339,7 @@ fn remap_ids_rewrites_only_mapped_references() {
         from_index: 0,
         to_index: 2,
     });
-    move_effect.remap_ids(&clip_map, &track_map, &marker_map);
+    move_effect.remap_ids(&ids);
     assert_eq!(
         move_effect,
         WireCommand::MoveEffect(MoveEffect {
@@ -347,7 +350,7 @@ fn remap_ids_rewrites_only_mapped_references() {
     );
 
     let mut extract = WireCommand::ExtractAudio(ExtractAudio { clip: 10, track: 2 });
-    extract.remap_ids(&clip_map, &track_map, &marker_map);
+    extract.remap_ids(&ids);
     assert_eq!(
         extract,
         WireCommand::ExtractAudio(ExtractAudio { clip: 99, track: 7 })
@@ -358,7 +361,7 @@ fn remap_ids_rewrites_only_mapped_references() {
         to_track: 2,
         start: 8.0,
     });
-    duplicate.remap_ids(&clip_map, &track_map, &marker_map);
+    duplicate.remap_ids(&ids);
     assert_eq!(
         duplicate,
         WireCommand::DuplicateClip(DuplicateClip {
@@ -372,7 +375,7 @@ fn remap_ids_rewrites_only_mapped_references() {
     let mut link = WireCommand::LinkClips(LinkClips {
         clips: vec![10, 11],
     });
-    link.remap_ids(&clip_map, &track_map, &marker_map);
+    link.remap_ids(&ids);
     assert_eq!(
         link,
         WireCommand::LinkClips(LinkClips {
@@ -383,7 +386,7 @@ fn remap_ids_rewrites_only_mapped_references() {
     let mut unlink = WireCommand::UnlinkClips(UnlinkClips {
         clips: vec![11, 10],
     });
-    unlink.remap_ids(&clip_map, &track_map, &marker_map);
+    unlink.remap_ids(&ids);
     assert_eq!(
         unlink,
         WireCommand::UnlinkClips(UnlinkClips {
@@ -397,7 +400,7 @@ fn remap_ids_rewrites_only_mapped_references() {
         clip: 10,
         mode: WireBlendMode::Multiply,
     });
-    blend.remap_ids(&clip_map, &track_map, &marker_map);
+    blend.remap_ids(&ids);
     assert_eq!(
         blend,
         WireCommand::SetClipBlendMode(SetClipBlendMode {
@@ -412,7 +415,7 @@ fn remap_ids_rewrites_only_mapped_references() {
         shutter_deg: Some(180.0),
         samples: Some(8),
     });
-    motion_blur.remap_ids(&clip_map, &track_map, &marker_map);
+    motion_blur.remap_ids(&ids);
     assert_eq!(
         motion_blur,
         WireCommand::SetMotionBlur(SetMotionBlur {
@@ -434,7 +437,7 @@ fn remap_ids_rewrites_only_mapped_references() {
             ..Default::default()
         },
     });
-    styles.remap_ids(&clip_map, &track_map, &marker_map);
+    styles.remap_ids(&ids);
     assert_eq!(
         styles,
         WireCommand::SetClipLayerStyles(SetClipLayerStyles {
@@ -456,7 +459,7 @@ fn remap_ids_rewrites_only_mapped_references() {
         name: None,
         color: None,
     });
-    set.remap_ids(&clip_map, &track_map, &marker_map);
+    set.remap_ids(&ids);
     assert_eq!(
         set,
         WireCommand::SetMarker(SetMarker {
@@ -466,12 +469,43 @@ fn remap_ids_rewrites_only_mapped_references() {
             color: None,
         })
     );
+
+    // Caption groups have their own map: a group id and a clip id of the
+    // same number are different entities.
+    let mut highlight = WireCommand::SetCaptionHighlight(SetCaptionHighlight {
+        group: 5,
+        mode: WireCaptionHighlightMode::Word,
+        fill: None,
+        plate: None,
+        plate_radius: None,
+        scale: None,
+    });
+    highlight.remap_ids(&ids);
+    assert_eq!(
+        highlight,
+        WireCommand::SetCaptionHighlight(SetCaptionHighlight {
+            group: 50,
+            mode: WireCaptionHighlightMode::Word,
+            fill: None,
+            plate: None,
+            plate_radius: None,
+            scale: None,
+        })
+    );
+
+    let mut merge = WireCommand::MergeCaptions(MergeCaptions { clips: vec![10, 5] });
+    merge.remap_ids(&ids);
+    assert_eq!(
+        merge,
+        WireCommand::MergeCaptions(MergeCaptions { clips: vec![99, 5] }),
+        "cue references follow the clip map, not the caption group map"
+    );
 }
 
 #[test]
 fn tool_specs_cover_every_command_with_object_schemas() {
     let specs = tool_specs();
-    assert_eq!(specs.len(), 51);
+    assert_eq!(specs.len(), 59);
     for spec in &specs {
         assert!(
             !spec.description.is_empty(),

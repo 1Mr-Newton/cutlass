@@ -143,7 +143,7 @@ fn request_body_includes_tools_and_messages() {
     );
     assert_eq!(body["messages"][2]["role"], "tool");
     assert_eq!(body["messages"][2]["tool_call_id"], "call_1");
-    assert_eq!(body["tools"].as_array().unwrap().len(), 51);
+    assert_eq!(body["tools"].as_array().unwrap().len(), 59);
     assert_eq!(body["tools"][0]["function"]["name"], "add_track");
     assert!(body.get("provider").is_none());
     assert_eq!(body["stream_options"]["include_usage"], true);

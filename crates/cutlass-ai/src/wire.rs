@@ -84,27 +84,33 @@ use serde::{Deserialize, Serialize};
 ///     size-independent half-plane.
 /// 47: Mirror feather docs note symmetric softening on both band edges;
 ///     size docs clarify Mirror thickness default when omitted.
-pub const TOOL_SCHEMA_VERSION: u32 = 47;
+/// 48: captions (`add_captions`, `remove_captions`, `set_caption_template`,
+///     `set_caption_style`, `set_caption_layout`, `set_caption_highlight`,
+///     `set_caption_text`, `merge_captions`); `split_clip` on a cue splits the
+///     line instead of duplicating it.
+pub const TOOL_SCHEMA_VERSION: u32 = 48;
 
 mod dtos;
 mod tools;
 
-pub(crate) use dtos::MAX_MULTI_CLIP_REFS;
 pub use dtos::{
-    AddClip, AddEffect, AddGenerated, AddMarker, AddTrack, AddTransition, ApplyEasingPreset,
-    DuplicateClip, ExtractAudio, LinkClips, MoveClip, MoveEffect, RemoveClip, RemoveEffect,
-    RemoveMarker, RemoveParamKeyframe, RemoveTrack, RemoveTransition, RippleDelete, RippleInsert,
-    SetAudioRole, SetCanvas, SetClipAdjustments, SetClipAnimation, SetClipAudio, SetClipBlendMode,
-    SetClipChroma, SetClipCrop, SetClipFilter, SetClipLayerStyles, SetClipMask, SetClipPitch,
-    SetClipSpeed, SetClipStabilize, SetClipTransform, SetDenoise, SetEffectParam, SetGenerator,
-    SetMarker, SetMotionBlur, SetParamConstant, SetParamKeyframe, SetSpeedCurve, SetTrackEnabled,
-    SetTrackLocked, SetTrackMuted, SetTransition, ShiftClips, SplitClip, TrimClip, UnlinkClips,
-    WireAnimationSlot, WireAudioRole, WireBlendMode, WireCanvasAspect, WireChromaKey,
-    WireClipParam, WireEasing, WireEasingPreset, WireFilter, WireGenerator, WireLayerBackground,
-    WireLayerGlow, WireLayerOutline, WireLayerShadow, WireLayerStyles, WireLookParam,
-    WireMarkerColor, WireMask, WireMaskKind, WireScale, WireShape, WireShapeParam,
+    AddCaptions, AddClip, AddEffect, AddGenerated, AddMarker, AddTrack, AddTransition,
+    ApplyEasingPreset, DuplicateClip, ExtractAudio, LinkClips, MergeCaptions, MoveClip, MoveEffect,
+    RemoveCaptions, RemoveClip, RemoveEffect, RemoveMarker, RemoveParamKeyframe, RemoveTrack,
+    RemoveTransition, RippleDelete, RippleInsert, SetAudioRole, SetCanvas, SetCaptionHighlight,
+    SetCaptionLayout, SetCaptionStyle, SetCaptionTemplate, SetCaptionText, SetClipAdjustments,
+    SetClipAnimation, SetClipAudio, SetClipBlendMode, SetClipChroma, SetClipCrop, SetClipFilter,
+    SetClipLayerStyles, SetClipMask, SetClipPitch, SetClipSpeed, SetClipStabilize,
+    SetClipTransform, SetDenoise, SetEffectParam, SetGenerator, SetMarker, SetMotionBlur,
+    SetParamConstant, SetParamKeyframe, SetSpeedCurve, SetTrackEnabled, SetTrackLocked,
+    SetTrackMuted, SetTransition, ShiftClips, SplitClip, TrimClip, UnlinkClips, WireAnimationSlot,
+    WireAudioRole, WireBlendMode, WireCanvasAspect, WireCaptionCue, WireCaptionHighlightMode,
+    WireChromaKey, WireClipParam, WireEasing, WireEasingPreset, WireFilter, WireGenerator,
+    WireLayerBackground, WireLayerGlow, WireLayerOutline, WireLayerShadow, WireLayerStyles,
+    WireLookParam, WireMarkerColor, WireMask, WireMaskKind, WireScale, WireShape, WireShapeParam,
     WireStabilizeLevel, WireStyleParam, WireTextParam, WireTrackKind,
 };
+pub(crate) use dtos::{MAX_MULTI_CLIP_REFS, MAX_WIRE_CAPTION_CUES};
 pub use tools::{ToolSpec, describe_project_spec, tool_specs};
 
 /// Every timeline edit the agent may request, as one tagged value.
@@ -166,35 +172,55 @@ pub enum WireCommand {
     RemoveMarker(RemoveMarker),
     SetMarker(SetMarker),
     SetCanvas(SetCanvas),
+    AddCaptions(AddCaptions),
+    RemoveCaptions(RemoveCaptions),
+    SetCaptionTemplate(SetCaptionTemplate),
+    SetCaptionStyle(SetCaptionStyle),
+    SetCaptionLayout(SetCaptionLayout),
+    SetCaptionHighlight(SetCaptionHighlight),
+    SetCaptionText(SetCaptionText),
+    MergeCaptions(MergeCaptions),
+}
+
+/// Sandbox → live id maps for plan replay, one per entity kind.
+///
+/// Kept as a struct rather than positional maps: every field has the same
+/// type, and swapping two of them would silently rewrite the wrong ids.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct IdRemap {
+    pub clips: std::collections::HashMap<u64, u64>,
+    pub tracks: std::collections::HashMap<u64, u64>,
+    pub markers: std::collections::HashMap<u64, u64>,
+    pub caption_groups: std::collections::HashMap<u64, u64>,
 }
 
 impl WireCommand {
-    /// Rewrite clip/track/marker references through the given maps (ids
-    /// absent from a map pass through unchanged).
+    /// Rewrite entity references through `ids` (ids absent from a map pass
+    /// through unchanged).
     ///
     /// This is what makes plan replay work: a plan is recorded against a
     /// sandbox where `add_track`/`split_clip` allocated sandbox-local ids;
     /// when the live engine replays the plan, each created entity gets a
     /// fresh id, and later steps that referenced the sandbox id must be
     /// remapped onto the real one.
-    pub fn remap_ids(
-        &mut self,
-        clip_map: &std::collections::HashMap<u64, u64>,
-        track_map: &std::collections::HashMap<u64, u64>,
-        marker_map: &std::collections::HashMap<u64, u64>,
-    ) {
+    pub fn remap_ids(&mut self, ids: &IdRemap) {
         let clip = |id: &mut u64| {
-            if let Some(mapped) = clip_map.get(id) {
+            if let Some(mapped) = ids.clips.get(id) {
                 *id = *mapped;
             }
         };
         let track = |id: &mut u64| {
-            if let Some(mapped) = track_map.get(id) {
+            if let Some(mapped) = ids.tracks.get(id) {
                 *id = *mapped;
             }
         };
         let marker = |id: &mut u64| {
-            if let Some(mapped) = marker_map.get(id) {
+            if let Some(mapped) = ids.markers.get(id) {
+                *id = *mapped;
+            }
+        };
+        let group = |id: &mut u64| {
+            if let Some(mapped) = ids.caption_groups.get(id) {
                 *id = *mapped;
             }
         };
@@ -259,6 +285,14 @@ impl WireCommand {
             WireCommand::RemoveMarker(a) => marker(&mut a.marker),
             WireCommand::SetMarker(a) => marker(&mut a.marker),
             WireCommand::SetCanvas(_) => {}
+            WireCommand::AddCaptions(a) => track(&mut a.track),
+            WireCommand::RemoveCaptions(a) => group(&mut a.group),
+            WireCommand::SetCaptionTemplate(a) => group(&mut a.group),
+            WireCommand::SetCaptionStyle(a) => group(&mut a.group),
+            WireCommand::SetCaptionLayout(a) => group(&mut a.group),
+            WireCommand::SetCaptionHighlight(a) => group(&mut a.group),
+            WireCommand::SetCaptionText(a) => clip(&mut a.clip),
+            WireCommand::MergeCaptions(a) => a.clips.iter_mut().for_each(clip),
         }
     }
 }

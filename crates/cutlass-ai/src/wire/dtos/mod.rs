@@ -3,10 +3,12 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+mod caption;
 mod look;
 mod params;
 mod timeline;
 
+pub use caption::*;
 pub use look::*;
 pub use params::*;
 pub use timeline::*;

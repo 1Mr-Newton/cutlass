@@ -472,7 +472,13 @@ pub fn validate(command: &WireCommand, project: &Project) -> Result<Command, Rej
                     ticks_to_seconds(tl.end_tick(), rate),
                 )));
             }
-            EditCommand::SplitClip { clip: clip.id, at }
+            // Splitting a caption cue has to partition its text and word
+            // timings, not duplicate the whole line into both halves.
+            if clip.caption.is_some() {
+                EditCommand::SplitCaptionCue { clip: clip.id, at }
+            } else {
+                EditCommand::SplitClip { clip: clip.id, at }
+            }
         }
         WireCommand::TrimClip(args) => {
             let clip = clip_ref(project, args.clip)?;
@@ -655,6 +661,29 @@ pub fn validate(command: &WireCommand, project: &Project) -> Result<Command, Rej
                 background: args.background.unwrap_or(current.background),
             }
         }
+        WireCommand::AddCaptions(args) => add_captions(project, args)?,
+        WireCommand::RemoveCaptions(args) => EditCommand::RemoveCaptionGroup {
+            group: caption_group_ref(project, args.group)?.id,
+        },
+        WireCommand::SetCaptionTemplate(args) => {
+            let group = caption_group_ref(project, args.group)?;
+            if cutlass_models::caption_template_spec(&args.template).is_none() {
+                return Err(Rejection::new(format!(
+                    "unknown caption template '{}'; available templates: {}",
+                    args.template,
+                    caption_template_ids()
+                )));
+            }
+            EditCommand::SetCaptionGroupTemplate {
+                group: group.id,
+                template: args.template.clone(),
+            }
+        }
+        WireCommand::SetCaptionStyle(args) => set_caption_style(project, args)?,
+        WireCommand::SetCaptionLayout(args) => set_caption_layout(project, args)?,
+        WireCommand::SetCaptionHighlight(args) => set_caption_highlight(project, args)?,
+        WireCommand::SetCaptionText(args) => set_caption_text(project, args)?,
+        WireCommand::MergeCaptions(args) => merge_captions(project, args)?,
     };
     Ok(Command::Edit(edit))
 }

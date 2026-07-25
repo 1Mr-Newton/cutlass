@@ -122,6 +122,17 @@ impl<W: ProjectSnapshotSource + ?Sized> EngineBridge for SandboxBridge<'_, W> {
                     EditOutcome::Created(id) => Some(AgentCreated::Clip(id.raw())),
                     EditOutcome::CreatedTrack(id) => Some(AgentCreated::Track(id.raw())),
                     EditOutcome::CreatedMarker(id) => Some(AgentCreated::Marker(id.raw())),
+                    EditOutcome::CreatedCaptionGroup(id) => Some(AgentCreated::Captions {
+                        group: id.raw(),
+                        cues: self
+                            .engine
+                            .project()
+                            .timeline()
+                            .caption_cue_ids(*id)
+                            .into_iter()
+                            .map(|clip| clip.raw())
+                            .collect(),
+                    }),
                     _ => None,
                 };
                 self.plan.push(AgentPlanStep {

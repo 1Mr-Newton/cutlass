@@ -89,4 +89,4 @@ pub use tools::{
     HostToolSpec, NullToolHost, ToolHost, ToolOutput, ToolTier, is_host_tool_name, namespace,
 };
 pub use validate::{Rejection, validate};
-pub use wire::{TOOL_SCHEMA_VERSION, ToolSpec, WireCommand, tool_specs};
+pub use wire::{IdRemap, TOOL_SCHEMA_VERSION, ToolSpec, WireCommand, tool_specs};

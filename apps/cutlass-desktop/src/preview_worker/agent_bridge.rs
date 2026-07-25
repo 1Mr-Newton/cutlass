@@ -17,10 +17,7 @@ pub(crate) fn agent_replay(
     phases: Vec<Vec<AgentPlanStep>>,
     mut after_step: impl FnMut(&mut Engine),
 ) -> Result<(), String> {
-    use std::collections::HashMap as Map;
-    let mut clip_map: Map<u64, u64> = Map::new();
-    let mut track_map: Map<u64, u64> = Map::new();
-    let mut marker_map: Map<u64, u64> = Map::new();
+    let mut ids = cutlass_ai::IdRemap::default();
     let phase_count = phases.len();
     let mut applied = 0usize;
     for (phase_index, steps) in phases.into_iter().enumerate() {
@@ -28,7 +25,7 @@ pub(crate) fn agent_replay(
         let mut cleanup_lanes = Vec::new();
         engine.begin_group();
         for (index, mut step) in steps.into_iter().enumerate() {
-            step.command.remap_ids(&clip_map, &track_map, &marker_map);
+            step.command.remap_ids(&ids);
             let cleanup_lane = agent_cleanup_source_lane(engine, &step.command);
             let outcome = cutlass_ai::validate(&step.command, engine.project())
                 .map_err(|r| r.message)
@@ -40,13 +37,25 @@ pub(crate) fn agent_replay(
                     }
                     match (step.created, &edited) {
                         (Some(AgentCreated::Clip(sandbox)), EditOutcome::Created(live)) => {
-                            clip_map.insert(sandbox, live.raw());
+                            ids.clips.insert(sandbox, live.raw());
                         }
                         (Some(AgentCreated::Track(sandbox)), EditOutcome::CreatedTrack(live)) => {
-                            track_map.insert(sandbox, live.raw());
+                            ids.tracks.insert(sandbox, live.raw());
                         }
                         (Some(AgentCreated::Marker(sandbox)), EditOutcome::CreatedMarker(live)) => {
-                            marker_map.insert(sandbox, live.raw());
+                            ids.markers.insert(sandbox, live.raw());
+                        }
+                        (
+                            Some(AgentCreated::Captions { group, cues }),
+                            EditOutcome::CreatedCaptionGroup(live),
+                        ) => {
+                            ids.caption_groups.insert(group, live.raw());
+                            // Same command, same cue count and order, so the
+                            // pairing is positional.
+                            let placed = engine.project().timeline().caption_cue_ids(*live);
+                            for (sandbox, live) in cues.into_iter().zip(placed) {
+                                ids.clips.insert(sandbox, live.raw());
+                            }
                         }
                         _ => {}
                     }

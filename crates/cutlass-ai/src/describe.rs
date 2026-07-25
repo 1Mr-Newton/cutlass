@@ -57,6 +57,9 @@ pub struct ProjectSummary {
     /// Ruler markers in tick order (M1). Omitted when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub markers: Vec<MarkerSummary>,
+    /// Caption groups, id-ascending. Omitted when the project has none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub captions: Vec<CaptionGroupSummary>,
     /// Canvas size and settings (set_canvas). Always present so the model
     /// knows the pixel frame placement fractions refer to.
     pub canvas: CanvasSummary,
@@ -88,6 +91,30 @@ pub struct MarkerSummary {
     pub name: String,
     /// Palette name: teal, blue, purple, pink, red, orange, yellow, green.
     pub color: String,
+}
+
+/// A caption group: the shared look and rules behind a run of cue clips.
+/// The cues themselves appear as text clips on `track`, each tagged with
+/// `caption` (this id).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CaptionGroupSummary {
+    pub id: u64,
+    pub label: String,
+    /// The text track holding this group's lines.
+    pub track: u64,
+    /// How many lines the group owns.
+    pub cues: usize,
+    /// Where the lines came from: manual, imported, or auto (recognized).
+    pub source: String,
+    /// Caption template id the look came from; absent once hand-styled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
+    /// Word-highlight mode when on: word or line. Absent when off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub highlight: Option<String>,
+    /// Whether the lines carry per-word timings (needed for highlighting).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub word_timings: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -230,6 +257,10 @@ pub struct ClipSummary {
     /// Audio role tag (set_audio_role); absent when untagged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio_role: Option<String>,
+    /// Caption group this clip is a line of (see `captions`); absent on
+    /// ordinary titles. Restyle the group, not the clip.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caption: Option<u64>,
 }
 
 /// One keyframe on a clip param, in the same units the model writes with
@@ -789,6 +820,7 @@ pub fn summarize(project: &Project) -> ProjectSummary {
                     animation_out: clip.animation_out.as_ref().map(|a| a.id.clone()),
                     animation_combo: clip.animation_combo.as_ref().map(|a| a.id.clone()),
                     audio_role: clip.audio_role.map(|r| r.id().to_string()),
+                    caption: clip.caption_group().map(|g| g.raw()),
                 })
                 .collect(),
         })
@@ -828,6 +860,38 @@ pub fn summarize(project: &Project) -> ProjectSummary {
         })
         .collect();
 
+    let captions = project
+        .timeline()
+        .caption_groups_ordered()
+        .iter()
+        .map(|group| {
+            let cues = project.timeline().caption_cues(group.id);
+            CaptionGroupSummary {
+                id: group.id.raw(),
+                label: group.label.clone(),
+                track: group.track.raw(),
+                cues: cues.len(),
+                source: match &group.source {
+                    cutlass_models::CaptionSource::Manual => "manual".to_string(),
+                    cutlass_models::CaptionSource::Imported { format } => {
+                        format!("imported:{}", format.id())
+                    }
+                    cutlass_models::CaptionSource::Auto { language, .. } => match language {
+                        Some(language) => format!("auto:{language}"),
+                        None => "auto".to_string(),
+                    },
+                },
+                template: group.template.clone(),
+                highlight: group.highlights().map(|h| h.mode.id().to_string()),
+                word_timings: cues.iter().any(|clip| {
+                    clip.caption
+                        .as_ref()
+                        .is_some_and(|cue| !cue.words.is_empty())
+                }),
+            }
+        })
+        .collect();
+
     let settings = project.timeline().canvas();
     let (width, height) = describe_canvas_size(project);
     let canvas = CanvasSummary {
@@ -843,6 +907,7 @@ pub fn summarize(project: &Project) -> ProjectSummary {
         duration_seconds: seconds(duration_ticks, rate),
         tracks,
         markers,
+        captions,
         canvas,
         media,
     }

@@ -2481,7 +2481,7 @@
       }
     },
     {
-      "description": "Split a clip at timeline seconds into two abutting clips.",
+      "description": "Split a clip at timeline seconds into two abutting clips. On a caption cue the line's text and word timings are split too.",
       "name": "split_clip",
       "parameters": {
         "description": "Split a clip at a timeline position into two abutting clips.",
@@ -3012,6 +3012,383 @@
       }
     },
     {
+      "description": "Lay caption lines on a text track as one group (times in seconds), optionally in a template look. Each line is a text clip; the group makes restyling one call.",
+      "name": "add_captions",
+      "parameters": {
+        "description": "Lay a run of caption lines onto a text track as one group, so a later\nrestyle or removal is a single call.",
+        "properties": {
+          "cues": {
+            "description": "The lines, in timeline order and non-overlapping.",
+            "items": {
+              "description": "One caption line and when it shows.",
+              "properties": {
+                "duration": {
+                  "description": "Time on screen, in seconds.",
+                  "type": "number"
+                },
+                "start": {
+                  "description": "Timeline position, in seconds.",
+                  "type": "number"
+                },
+                "text": {
+                  "description": "The line as it reads on screen; \"\\n\" for a deliberate break.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "text",
+                "start",
+                "duration"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "label": {
+            "description": "Name for the caption list (\"Intro captions\").",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "template": {
+            "description": "Template id styling every line: clean, bold_box, karaoke_pop, glow,\noutline, multiline.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "track": {
+            "description": "Text track id; add_track(kind=\"text\") first if there is no text lane.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "track",
+          "cues"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Remove a caption group and every line it owns.",
+      "name": "remove_captions",
+      "parameters": {
+        "description": "Remove a caption group and every line it owns.",
+        "properties": {
+          "group": {
+            "description": "Caption group id (see describe_project).",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "group"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Restyle a whole caption group from the catalog: clean, bold_box, karaoke_pop, glow, outline, multiline.",
+      "name": "set_caption_template",
+      "parameters": {
+        "description": "Restyle a whole caption group from the template catalog.",
+        "properties": {
+          "group": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "template": {
+            "description": "Template id: clean, bold_box, karaoke_pop, glow, outline, multiline.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "group",
+          "template"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Adjust a caption group's shared look (font, size, fill, bold/italic, uppercase, vertical position, scale). Omitted fields keep.",
+      "name": "set_caption_style",
+      "parameters": {
+        "description": "Adjust a caption group's shared look. Omitted fields keep their current\nvalue, so this patches whatever the template left behind.",
+        "properties": {
+          "bold": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "fill": {
+            "description": "Fill as [red, green, blue, alpha], each 0-255.",
+            "items": {
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "font": {
+            "description": "Font family name (\"\" for the system default).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "group": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "italic": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "keep_overrides": {
+            "description": "Leave hand-styled lines alone (default false: restyle every line).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "position_y": {
+            "description": "Vertical placement, canvas fractions down from the center: 0 centers\nthe block, 0.32 is the default just above the safe area, 0.5 the edge.",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "scale": {
+            "description": "Uniform scale on top of the font size (1.0 = the size as given).",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "size": {
+            "description": "Font size in reference px (1080p-tall canvas).",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "uppercase": {
+            "description": "Render every line in capitals.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "group"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Set a caption group's line-breaking rules and safe area (chars/line, max lines, min/max duration, gap). Moves lines into the new safe area; does not re-split them.",
+      "name": "set_caption_layout",
+      "parameters": {
+        "description": "Change how a caption group breaks speech into lines and where they sit.\nThese rules govern re-segmentation and the safe area; existing lines move\ninto the new safe area but are not re-split. Omitted fields keep.",
+        "properties": {
+          "group": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_chars_per_line": {
+            "description": "Characters per line before a break (8–256).",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_duration": {
+            "description": "Longest a line runs before it is split, in seconds (max 30).",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "max_lines": {
+            "description": "Lines one cue may hold (1–6).",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "min_duration": {
+            "description": "Shortest a line is held, in seconds.",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "min_gap": {
+            "description": "Gap between lines so they visibly change, in seconds.",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "safe_area_bottom": {
+            "description": "Clearance from the canvas bottom, canvas fractions (0–0.5). The 0.18\ndefault clears the TikTok/Reels UI.",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "group"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Karaoke highlight for a caption group: mode off/word/line, fill, plate color and rounding, emphasis scale. Needs per-word timings (auto captions).",
+      "name": "set_caption_highlight",
+      "parameters": {
+        "description": "Set or clear a caption group's word highlight.\n\nHighlighting needs per-word timings, which only auto-generated captions\ncarry — on hand-written or imported lines this setting is stored and simply\ndoes not draw.",
+        "properties": {
+          "fill": {
+            "description": "Highlighted-word fill as [red, green, blue, alpha], each 0-255.",
+            "items": {
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "group": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mode": {
+            "description": "\"off\" clears the highlight; \"word\" and \"line\" turn it on.",
+            "oneOf": [
+              {
+                "const": "off",
+                "description": "No highlight; every line renders in one color.",
+                "type": "string"
+              },
+              {
+                "const": "word",
+                "description": "Recolor the word being spoken (karaoke).",
+                "type": "string"
+              },
+              {
+                "const": "line",
+                "description": "Recolor every word up to the one being spoken (progressive fill).",
+                "type": "string"
+              }
+            ]
+          },
+          "plate": {
+            "description": "Card behind the highlighted word; alpha 0 for a plain color swap.",
+            "items": {
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "plate_radius": {
+            "description": "Card corner rounding, 0 (square) to 1 (pill).",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "scale": {
+            "description": "Size multiplier for the highlighted word (1.0 = none, 0.25–4).",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "group",
+          "mode"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Fix one caption line's wording (and speaker); word timings are remapped onto the new text.",
+      "name": "set_caption_text",
+      "parameters": {
+        "description": "Reword one caption line. Word timings ride along, remapped onto the new\ntext, so karaoke highlighting stays roughly in sync.",
+        "properties": {
+          "clip": {
+            "description": "The caption cue clip to edit.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "speaker": {
+            "description": "Speaker label for the line.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "description": "The corrected line.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "clip",
+          "text"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Merge caption lines of one group into the earliest, joining their text and timings.",
+      "name": "merge_captions",
+      "parameters": {
+        "description": "Merge caption lines of one group into the earliest, joining their text.",
+        "properties": {
+          "clips": {
+            "description": "Two or more cue clips of the same caption group.",
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "clips"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "description": "Get the current state of the project: tracks, clips with ids and times in seconds, the media pool, and the user's selection and playhead. Call this whenever you are unsure about ids or timing.",
       "name": "describe_project",
       "parameters": {
@@ -3036,5 +3413,5 @@
       }
     }
   ],
-  "version": 47
+  "version": 48
 }
