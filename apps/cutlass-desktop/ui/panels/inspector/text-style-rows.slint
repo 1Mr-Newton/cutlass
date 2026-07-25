@@ -299,6 +299,13 @@ export component TextStyleRows inherits VerticalLayout {
                 }
             }
 
+            // Font size carries no unit, but it keeps the unit column so its
+            // readout and keyframe cluster line up with the slider rows below.
+            Rectangle {
+                width: InspectorRowMetrics.suffix-width;
+                horizontal-stretch: 0;
+            }
+
             KeyframeControl {
                 state: root.size-sample.row;
                 can-toggle: root.playhead-inside;
