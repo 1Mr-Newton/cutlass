@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::Map;
+use crate::caption::CaptionGroup;
 use crate::clip::Clip;
 use crate::error::ModelError;
-use crate::ids::{ClipId, MarkerId, TrackId};
+use crate::ids::{CaptionGroupId, ClipId, MarkerId, TrackId};
 use crate::time::{Rational, RationalTime, resample};
 use crate::track::{Track, TrackKind};
 
@@ -298,6 +299,21 @@ pub struct Timeline {
     /// saves stay byte-identical.
     #[serde(default, skip_serializing_if = "CanvasSettings::is_default")]
     canvas: CanvasSettings,
+    /// Caption groups keyed by id: the shared style, layout rules, and
+    /// provenance behind each batch of caption cues. The cues themselves are
+    /// ordinary text clips on the tracks above. Optional + defaulted so
+    /// pre-caption project files load unchanged and caption-free saves stay
+    /// byte-identical.
+    #[serde(
+        default,
+        skip_serializing_if = "is_empty_caption_groups",
+        with = "crate::serde_map"
+    )]
+    caption_groups: Map<CaptionGroupId, CaptionGroup>,
+}
+
+fn is_empty_caption_groups(groups: &Map<CaptionGroupId, CaptionGroup>) -> bool {
+    groups.is_empty()
 }
 
 impl Timeline {
@@ -309,6 +325,7 @@ impl Timeline {
             clip_index: Map::default(),
             markers: Vec::new(),
             canvas: CanvasSettings::default(),
+            caption_groups: Map::default(),
         }
     }
 
@@ -682,6 +699,109 @@ impl Timeline {
                 Err(e)
             }
         }
+    }
+
+    // --- caption groups -----------------------------------------------------
+
+    /// The caption group `id`, or `None`.
+    pub fn caption_group(&self, id: CaptionGroupId) -> Option<&CaptionGroup> {
+        self.caption_groups.get(&id)
+    }
+
+    pub fn caption_group_mut(&mut self, id: CaptionGroupId) -> Option<&mut CaptionGroup> {
+        self.caption_groups.get_mut(&id)
+    }
+
+    /// Caption groups in id order, so the caption list and every projection
+    /// agree on ordering across sessions.
+    pub fn caption_groups_ordered(&self) -> Vec<&CaptionGroup> {
+        let mut groups: Vec<&CaptionGroup> = self.caption_groups.values().collect();
+        groups.sort_by_key(|group| group.id);
+        groups
+    }
+
+    pub fn caption_group_count(&self) -> usize {
+        self.caption_groups.len()
+    }
+
+    /// Register a caption group. Rejects duplicate ids (an undo restore must
+    /// not double-insert) and unknown or non-text tracks.
+    pub fn add_caption_group(&mut self, group: CaptionGroup) -> Result<CaptionGroupId, ModelError> {
+        if self.caption_groups.contains_key(&group.id) {
+            return Err(ModelError::DuplicateCaptionGroup(group.id));
+        }
+        let track = self
+            .tracks
+            .get(&group.track)
+            .ok_or(ModelError::UnknownTrack(group.track))?;
+        if track.kind != TrackKind::Text {
+            return Err(ModelError::IncompatibleTrackKind {
+                track: group.track,
+                kind: track.kind,
+            });
+        }
+        group.validate()?;
+        let id = group.id;
+        self.caption_groups.insert(id, group);
+        Ok(id)
+    }
+
+    /// Remove a caption group, returning it for undo capture. The member cue
+    /// clips are *not* removed — callers decide whether to delete them or
+    /// leave them as plain titles (and must clear their `caption` metadata).
+    pub fn remove_caption_group(&mut self, id: CaptionGroupId) -> Option<CaptionGroup> {
+        self.caption_groups.remove(&id)
+    }
+
+    /// Every cue clip of `group`, in timeline order.
+    pub fn caption_cues(&self, group: CaptionGroupId) -> Vec<&Clip> {
+        let Some(track) = self.caption_group(group).and_then(|g| self.track(g.track)) else {
+            return Vec::new();
+        };
+        track
+            .clips_ordered()
+            .iter()
+            .filter(|clip| clip.caption_group() == Some(group))
+            .copied()
+            .collect()
+    }
+
+    /// Clip ids of every cue of `group`, in timeline order.
+    pub fn caption_cue_ids(&self, group: CaptionGroupId) -> Vec<ClipId> {
+        self.caption_cues(group)
+            .iter()
+            .map(|clip| clip.id)
+            .collect()
+    }
+
+    /// Renumber `group`'s cues densely in timeline order, keeping the cue list
+    /// readable as "line N" after a split, merge, or delete.
+    pub fn reindex_caption_group(&mut self, group: CaptionGroupId) {
+        for (index, clip_id) in self.caption_cue_ids(group).into_iter().enumerate() {
+            let index = u32::try_from(index).unwrap_or(u32::MAX);
+            if let Some(cue) = self.clip_mut(clip_id).and_then(|c| c.caption.as_mut())
+                && cue.index != index
+            {
+                cue.index = index;
+            }
+        }
+    }
+
+    /// Drop caption groups that no longer have any cue clips, mirroring the
+    /// empty-lane rule: an auto-caption batch whose lines were all deleted
+    /// should not linger in the caption list. Returns the removed groups so an
+    /// undo can restore them.
+    pub fn prune_empty_caption_groups(&mut self) -> Vec<CaptionGroup> {
+        let empty: Vec<CaptionGroupId> = self
+            .caption_groups
+            .keys()
+            .copied()
+            .filter(|id| self.caption_cues(*id).is_empty())
+            .collect();
+        empty
+            .into_iter()
+            .filter_map(|id| self.caption_groups.remove(&id))
+            .collect()
     }
 
     /// Total timeline length: the end of the last-ending clip at [`frame_rate`](Self::frame_rate).
