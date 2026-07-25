@@ -9,6 +9,7 @@ import { AppStore, PreviewStore, TimelineStore } from "../../store/index.slint";
 import { InspectorBackend, ScalarParamSample } from "../../lib/inspector-backend.slint";
 import { CatalogEntry, Clip } from "../../models/index.slint";
 import { LabelCell, SectionHeader, SliderRow } from "inspector-widgets.slint";
+import { InspectorRowMetrics } from "inspector-metrics.slint";
 
 component MaskRow inherits Rectangle {
     in property <string> label;
@@ -324,7 +325,7 @@ export component MaskInspector inherits VerticalLayout {
     }
 
     HorizontalLayout {
-        spacing: AppStore.theme.metrics.spacing.md;
+        spacing: InspectorRowMetrics.spacing;
         height: 28px;
         vertical-stretch: 0;
 
@@ -342,7 +343,7 @@ export component MaskInspector inherits VerticalLayout {
     }
 
     if root.has-mask: HorizontalLayout {
-        spacing: AppStore.theme.metrics.spacing.md;
+        spacing: InspectorRowMetrics.spacing;
         height: 28px;
         vertical-stretch: 0;
 

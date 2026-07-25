@@ -8,6 +8,7 @@ import { AppStore, TimelineStore } from "../../store/index.slint";
 import { InspectorBackend, ScalarParamSample } from "../../lib/inspector-backend.slint";
 import { Clip } from "../../models/index.slint";
 import { LabelCell, SectionHeader, SliderRow } from "inspector-widgets.slint";
+import { InspectorRowMetrics } from "inspector-metrics.slint";
 
 export component ChromaInspector inherits VerticalLayout {
     in property <Clip> model;
@@ -62,7 +63,7 @@ export component ChromaInspector inherits VerticalLayout {
     }
 
     if model.chroma-enabled: HorizontalLayout {
-        spacing: AppStore.theme.metrics.spacing.md;
+        spacing: InspectorRowMetrics.spacing;
 
         LabelCell {
             label: "Key";

@@ -8,6 +8,7 @@ import { AppStore, TimelineStore } from "../../store/index.slint";
 import { InspectorBackend, ScalarParamSample } from "../../lib/inspector-backend.slint";
 import { Clip } from "../../models/index.slint";
 import { LabelCell, SectionHeader, SliderRow } from "inspector-widgets.slint";
+import { InspectorRowMetrics } from "inspector-metrics.slint";
 
 export component StylesInspector inherits VerticalLayout {
     in property <Clip> model;
@@ -104,7 +105,7 @@ export component StylesInspector inherits VerticalLayout {
     }
 
     if model.style-shadow-enabled: HorizontalLayout {
-        spacing: AppStore.theme.metrics.spacing.md;
+        spacing: InspectorRowMetrics.spacing;
 
         LabelCell {
             label: "Color";
@@ -230,7 +231,7 @@ export component StylesInspector inherits VerticalLayout {
     }
 
     if model.style-glow-enabled: HorizontalLayout {
-        spacing: AppStore.theme.metrics.spacing.md;
+        spacing: InspectorRowMetrics.spacing;
 
         LabelCell {
             label: "Color";
@@ -318,7 +319,7 @@ export component StylesInspector inherits VerticalLayout {
     }
 
     if model.style-outline-enabled: HorizontalLayout {
-        spacing: AppStore.theme.metrics.spacing.md;
+        spacing: InspectorRowMetrics.spacing;
 
         LabelCell {
             label: "Color";
@@ -380,7 +381,7 @@ export component StylesInspector inherits VerticalLayout {
     }
 
     if model.style-background-enabled: HorizontalLayout {
-        spacing: AppStore.theme.metrics.spacing.md;
+        spacing: InspectorRowMetrics.spacing;
 
         LabelCell {
             label: "Color";

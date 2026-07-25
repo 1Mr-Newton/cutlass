@@ -21,6 +21,7 @@ import {
     LabelCell,
     SliderRow,
 } from "inspector-widgets.slint";
+import { InspectorRowMetrics } from "inspector-metrics.slint";
 import { AudioMixInspector } from "audio-inspector.slint";
 import { TextInspector } from "text-inspector.slint";
 import { TransformInspector } from "transform-inspector.slint";
@@ -193,7 +194,7 @@ component SpeedInspector inherits VerticalLayout {
     }
 
     HorizontalLayout {
-        spacing: AppStore.theme.metrics.spacing.md;
+        spacing: InspectorRowMetrics.spacing;
         height: 28px;
         vertical-stretch: 0;
 
@@ -212,7 +213,7 @@ component SpeedInspector inherits VerticalLayout {
     }
 
     HorizontalLayout {
-        spacing: AppStore.theme.metrics.spacing.md;
+        spacing: InspectorRowMetrics.spacing;
         height: 28px;
         vertical-stretch: 0;
 
@@ -242,7 +243,7 @@ component SpeedInspector inherits VerticalLayout {
     }
 
     if root.model.speed-label != "": HorizontalLayout {
-        spacing: AppStore.theme.metrics.spacing.md;
+        spacing: InspectorRowMetrics.spacing;
         height: 28px;
         vertical-stretch: 0;
 
@@ -305,7 +306,7 @@ component SpeedRampInspector inherits VerticalLayout {
     }
 
     HorizontalLayout {
-        spacing: AppStore.theme.metrics.spacing.md;
+        spacing: InspectorRowMetrics.spacing;
         height: 28px;
         vertical-stretch: 0;
 
@@ -452,9 +453,11 @@ component VisualClipInspector inherits VerticalLayout {
 
     body-scroll := CutlassScrollView {
         vertical-stretch: 1;
-        viewport-width: root.width;
+        // Property rows are fixed-width, so below the sheet's intrinsic
+        // width the body scrolls sideways rather than clipping the
+        // right-hand controls off the panel edge.
+        viewport-width: content.width;
         viewport-height: content.preferred-height;
-        show-horizontal-scrollbar: false;
         interactive: false;
 
         // Blur catcher: any click that no control claims (labels, dividers,
@@ -463,7 +466,7 @@ component VisualClipInspector inherits VerticalLayout {
         TouchArea {
             x: 0;
             y: 0;
-            width: body-scroll.width;
+            width: max(body-scroll.width, content.width);
             height: max(body-scroll.height, content.preferred-height);
             clicked => {
                 AppState.refocus-shortcuts();
@@ -471,7 +474,10 @@ component VisualClipInspector inherits VerticalLayout {
         }
 
         content := VerticalLayout {
-            width: max(0px, root.width - AppStore.theme.scrollbar.size);
+            width: max(
+                root.width - AppStore.theme.scrollbar.size,
+                InspectorRowMetrics.min-content-width,
+            );
             spacing: AppStore.theme.metrics.spacing.lg;
             alignment: LayoutAlignment.start;
             padding: AppStore.theme.metrics.spacing.lg;
@@ -489,7 +495,7 @@ component VisualClipInspector inherits VerticalLayout {
             }
 
             if root.is-solid: HorizontalLayout {
-                spacing: AppStore.theme.metrics.spacing.md;
+                spacing: InspectorRowMetrics.spacing;
 
                 LabelCell {
                     label: "Color";
@@ -523,7 +529,7 @@ component VisualClipInspector inherits VerticalLayout {
             }
 
             if root.is-shape: HorizontalLayout {
-                spacing: AppStore.theme.metrics.spacing.md;
+                spacing: InspectorRowMetrics.spacing;
 
                 LabelCell {
                     label: "Fill";
@@ -675,15 +681,16 @@ component AudioClipInspector inherits VerticalLayout {
 
     body-scroll := CutlassScrollView {
         vertical-stretch: 1;
-        viewport-width: root.width;
+        // See VisualClipInspector: fixed-width rows scroll sideways instead
+        // of clipping when the pane is narrower than the sheet needs.
+        viewport-width: content.width;
         viewport-height: content.preferred-height;
-        show-horizontal-scrollbar: false;
         interactive: false;
 
         TouchArea {
             x: 0;
             y: 0;
-            width: body-scroll.width;
+            width: max(body-scroll.width, content.width);
             height: max(body-scroll.height, content.preferred-height);
             clicked => {
                 AppState.refocus-shortcuts();
@@ -691,7 +698,10 @@ component AudioClipInspector inherits VerticalLayout {
         }
 
         content := VerticalLayout {
-            width: max(0px, root.width - AppStore.theme.scrollbar.size);
+            width: max(
+                root.width - AppStore.theme.scrollbar.size,
+                InspectorRowMetrics.min-content-width,
+            );
             spacing: AppStore.theme.metrics.spacing.lg;
             alignment: LayoutAlignment.start;
             padding: AppStore.theme.metrics.spacing.lg;

@@ -123,7 +123,10 @@ export component AppWindow inherits Window {
     full-screen: AppState.preview-maximized;
 
     in-out property <length> left-pane-width: 300px;
-    in-out property <length> right-pane-width: 300px;
+    // Wide enough for the inspector's intrinsic row width
+    // (`InspectorRowMetrics.min-content-width` plus the scrollbar gutter);
+    // narrower and the property sheets have to scroll sideways.
+    in-out property <length> right-pane-width: 360px;
     in-out property <length> agent-pane-width: 300px;
     in-out property <length> timeline-height: 340px;
 

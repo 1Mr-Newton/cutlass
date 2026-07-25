@@ -18,6 +18,7 @@ import {
     SectionHeader,
     SliderRow,
 } from "inspector-widgets.slint";
+import { InspectorRowMetrics } from "inspector-metrics.slint";
 
 export component AudioMixInspector inherits VerticalLayout {
     in property <Clip> model;
@@ -197,7 +198,7 @@ export component AudioMixInspector inherits VerticalLayout {
     // toggle. The mixers render the clip's audio through RNNoise and cache the
     // result, so the change is audible within a buffer block of the republish.
     HorizontalLayout {
-        spacing: AppStore.theme.metrics.spacing.md;
+        spacing: InspectorRowMetrics.spacing;
         height: 28px;
         vertical-stretch: 0;
 

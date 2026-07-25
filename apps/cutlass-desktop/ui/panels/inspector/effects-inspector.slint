@@ -15,6 +15,7 @@ import { AppStore, TimelineStore } from "../../store/index.slint";
 import { Clip } from "../../models/index.slint";
 import { EffectsBackend, InspectorBackend } from "../../lib/index.slint";
 import { SectionHeader, SliderRow, LabelCell } from "inspector-widgets.slint";
+import { InspectorRowMetrics } from "inspector-metrics.slint";
 
 export component EffectsInspector inherits VerticalLayout {
     // Named `model` — `clip` is a built-in boolean on Slint elements.
@@ -83,7 +84,7 @@ export component EffectsInspector inherits VerticalLayout {
             }
 
             if p.kind == "color": HorizontalLayout {
-                spacing: AppStore.theme.metrics.spacing.md;
+                spacing: InspectorRowMetrics.spacing;
                 height: 28px;
                 vertical-stretch: 0;
 

@@ -7,6 +7,7 @@ import { AppStore, TimelineStore } from "../../store/index.slint";
 import { InspectorBackend } from "../../lib/inspector-backend.slint";
 import { Clip, CatalogEntry } from "../../models/index.slint";
 import { LabelCell, SectionHeader, SliderRow } from "inspector-widgets.slint";
+import { InspectorRowMetrics } from "inspector-metrics.slint";
 
 component AnimationPresetRow inherits Rectangle {
     in property <string> label;
@@ -235,7 +236,7 @@ export component AnimationInspector inherits VerticalLayout {
     }
 
     HorizontalLayout {
-        spacing: AppStore.theme.metrics.spacing.md;
+        spacing: InspectorRowMetrics.spacing;
         height: 28px;
         vertical-stretch: 0;
 
@@ -272,7 +273,7 @@ export component AnimationInspector inherits VerticalLayout {
     }
 
     HorizontalLayout {
-        spacing: AppStore.theme.metrics.spacing.md;
+        spacing: InspectorRowMetrics.spacing;
         height: 28px;
         vertical-stretch: 0;
 
@@ -309,7 +310,7 @@ export component AnimationInspector inherits VerticalLayout {
     }
 
     HorizontalLayout {
-        spacing: AppStore.theme.metrics.spacing.md;
+        spacing: InspectorRowMetrics.spacing;
         height: 28px;
         vertical-stretch: 0;
 
