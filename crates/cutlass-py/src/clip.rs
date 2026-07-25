@@ -342,12 +342,7 @@ impl Clip {
     }
 
     #[pyo3(signature = (slot, animation_id=None))]
-    fn set_animation(
-        &self,
-        py: Python,
-        slot: &str,
-        animation_id: Option<&str>,
-    ) -> PyResult<()> {
+    fn set_animation(&self, py: Python, slot: &str, animation_id: Option<&str>) -> PyResult<()> {
         let animation_slot = parse_animation_slot(slot)?;
         let animation = animation_id.map(AnimationRef::new);
         self.with_project(py, |project| {
@@ -653,7 +648,6 @@ impl Clip {
                 .map_err(model_err)
         })
     }
-
     #[pyo3(signature = (**kwargs))]
     fn set_style(&self, py: Python, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
         let kwargs =
@@ -800,7 +794,15 @@ fn param_value_for(param: ClipParam, value: &Bound<'_, PyAny>) -> PyResult<Param
         ClipParam::Effect { .. } => Err(PyValueError::new_err(
             "use Effect.animate for effect parameters",
         )),
-        ClipParam::Speed => Err(PyValueError::new_err("speed curves are not exposed yet")),
+        // Reachable only if `clip_param` grows a name for them.
+        ClipParam::Speed
+        | ClipParam::Crop
+        | ClipParam::Pan
+        | ClipParam::Text { .. }
+        | ClipParam::Look { .. }
+        | ClipParam::Style { .. } => Err(PyValueError::new_err(
+            "this property is not animatable from Python yet",
+        )),
     }
 }
 
