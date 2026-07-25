@@ -284,11 +284,16 @@ pub(crate) fn wire_timeline(
     });
 
     let export_handle = preview_worker.handle();
-    export_backend.on_start(move |path, target_height, fps_num| {
+    export_backend.on_start(move |path, target_height, fps_num, subtitles| {
         export_handle.export(preview_worker::ExportRequest {
             path: std::path::PathBuf::from(path.as_str()),
             target_height: u32::try_from(target_height).ok().filter(|&h| h > 0),
             fps_num: (fps_num > 0).then_some(fps_num),
+            subtitles: match subtitles {
+                1 => Some(cutlass_models::CaptionFileFormat::Srt),
+                2 => Some(cutlass_models::CaptionFileFormat::Vtt),
+                _ => None,
+            },
         });
     });
 

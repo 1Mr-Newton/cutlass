@@ -924,6 +924,9 @@ pub struct ExportRequest {
     pub target_height: Option<u32>,
     /// Resample to this integer frame rate; `None` keeps the timeline rate.
     pub fps_num: Option<i32>,
+    /// Write the project's caption cues as a subtitle file next to the video;
+    /// `None` writes no sidecar.
+    pub subtitles: Option<CaptionFileFormat>,
 }
 
 /// One clip's resolved landing inside a [`WorkerMsg::MoveGroup`] batch.

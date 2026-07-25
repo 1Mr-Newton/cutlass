@@ -2575,6 +2575,7 @@ fn export_settings_default_to_the_project_native_output() {
         path: PathBuf::from("/tmp/out.mp4"),
         target_height: None,
         fps_num: None,
+        subtitles: None,
     };
     let settings = export_settings_for(&project, &request);
     let native = ExportSettings::for_project(&project).evened();
@@ -2589,6 +2590,7 @@ fn export_settings_scale_to_the_target_height_preserving_aspect() {
         path: PathBuf::from("/tmp/out.mp4"),
         target_height: Some(720),
         fps_num: None,
+        subtitles: None,
     };
     let settings = export_settings_for(&project, &request);
     assert_eq!(settings.size.1, 720);
@@ -2607,6 +2609,7 @@ fn export_settings_override_the_frame_rate() {
         path: PathBuf::from("/tmp/out.mp4"),
         target_height: None,
         fps_num: Some(24),
+        subtitles: None,
     };
     let settings = export_settings_for(&project, &request);
     assert_eq!(settings.frame_rate, Rational::new(24, 1));
@@ -2615,9 +2618,72 @@ fn export_settings_override_the_frame_rate() {
         path: PathBuf::from("/tmp/out.mp4"),
         target_height: None,
         fps_num: Some(0),
+        subtitles: None,
     };
     let settings = export_settings_for(&project, &request);
     assert_eq!(settings.frame_rate, Rational::FPS_30);
+}
+
+// --- subtitle sidecar ------------------------------------------------------
+
+#[test]
+fn subtitle_sidecar_writes_every_group_beside_the_video() {
+    use cutlass_models::{CaptionCueSpec, CaptionGroupSpec};
+
+    let dir = tempfile::tempdir().expect("temp dir");
+    let video = dir.path().join("reel.mp4");
+    let mut project = Project::new("captions", Rational::FPS_24);
+    let track = project.add_track(TrackKind::Text, "Captions");
+    project
+        .add_caption_group(
+            &CaptionGroupSpec::manual(track, "Dialogue"),
+            &[
+                CaptionCueSpec::new("first line", TimeRange::at_rate(0, 24, Rational::FPS_24)),
+                CaptionCueSpec::new("second line", TimeRange::at_rate(48, 24, Rational::FPS_24)),
+            ],
+        )
+        .expect("caption group");
+    // A second group's lines interleave into the same file by start time.
+    let other = project.add_track(TrackKind::Text, "Signs");
+    project
+        .add_caption_group(
+            &CaptionGroupSpec::manual(other, "Signs"),
+            &[CaptionCueSpec::new(
+                "middle line",
+                TimeRange::at_rate(24, 24, Rational::FPS_24),
+            )],
+        )
+        .expect("second group");
+
+    let srt = write_subtitle_sidecar(&project, &video, CaptionFileFormat::Srt).expect("sidecar");
+    assert_eq!(srt, dir.path().join("reel.srt"));
+    let text = std::fs::read_to_string(&srt).expect("read sidecar");
+    assert!(
+        text.starts_with("1\n00:00:00,000 --> 00:00:01,000\nfirst line"),
+        "{text}"
+    );
+    let order: Vec<&str> = text
+        .lines()
+        .filter(|line| line.ends_with(" line"))
+        .collect();
+    assert_eq!(order, ["first line", "middle line", "second line"]);
+
+    let vtt = write_subtitle_sidecar(&project, &video, CaptionFileFormat::Vtt).expect("sidecar");
+    assert_eq!(vtt, dir.path().join("reel.vtt"));
+    assert!(
+        std::fs::read_to_string(&vtt)
+            .expect("read sidecar")
+            .starts_with("WEBVTT")
+    );
+}
+
+#[test]
+fn subtitle_sidecar_of_a_caption_free_project_is_empty() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let video = dir.path().join("reel.mp4");
+    let project = Project::new("no captions", Rational::FPS_24);
+    let path = write_subtitle_sidecar(&project, &video, CaptionFileFormat::Srt).expect("sidecar");
+    assert_eq!(std::fs::read_to_string(&path).expect("read sidecar"), "");
 }
 
 // --- magnet ripple trim (commit path) -----------------------------------
