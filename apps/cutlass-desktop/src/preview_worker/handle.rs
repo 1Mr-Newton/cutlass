@@ -196,6 +196,24 @@ impl WorkerHandle {
         let _ = self.tx.send(WorkerMsg::Caption(op));
     }
 
+    /// Synchronous round-trip: place transcribed cues, returning how many
+    /// landed. Blocking is deliberate — the caller is the transcription job's
+    /// own thread, and its dialog must report the engine's answer. `None` only
+    /// if the worker thread is gone.
+    pub fn add_transcribed_captions(
+        &self,
+        captions: Box<TranscribedCaptions>,
+    ) -> Option<Result<usize, String>> {
+        let (reply, rx) = bounded(1);
+        self.tx
+            .send(WorkerMsg::Caption(CaptionOp::AddTranscribed {
+                captions,
+                reply,
+            }))
+            .ok()?;
+        rx.recv().ok()
+    }
+
     pub fn set_shape_size(&self, clip: String, width: f32, height: f32) {
         let _ = self.tx.send(WorkerMsg::SetShapeSize {
             clip,

@@ -1,4 +1,18 @@
-import { CaptionGroupView, CatalogEntry, Sequence, TextClipStyle } from "../models/index.slint";
+import { CaptionGroupView, CatalogEntry, Project, Sequence, TextClipStyle } from "../models/index.slint";
+
+// The clip auto captions would transcribe, resolved Rust-side from the
+// selection (or the playhead) so the dialog does not walk the timeline itself.
+export struct CaptionAutoSource {
+    // Timeline clip whose audio would be transcribed; "" ⇔ nothing usable, and
+    // `reason` says why.
+    clip-id: string,
+    // Asset name, shown as the source line.
+    name: string,
+    // The clip's own length, e.g. "0:42".
+    duration-label: string,
+    // Why captioning is unavailable ("" when it is available).
+    reason: string,
+}
 
 // One caption line as the cue list shows it. Derived Rust-side from the
 // projected clips of a group (`src/captions.rs`) — cues are ordinary text
@@ -108,4 +122,48 @@ export global CaptionBackend {
     // caption group starting at `tick`. Cancel changes nothing; a read or
     // parse failure surfaces as a session error dialog.
     callback import-subtitles(tick: int, template: string);
+
+    // --- auto captions (speech recognition) ----------------------------
+    // The clip the Auto Captions dialog would transcribe: the selected media
+    // clip, else the one under the playhead. Cheap enough to call per repaint.
+    pure callback auto-source(project: Project, selected-clip: string, playhead-tick: int)
+        -> CaptionAutoSource;
+
+    // Transcribe `clip-id`'s audio and add the cues as one caption group.
+    // Runs as a background job (model install, decode, inference); progress
+    // lands in the properties below and the cues arrive as one undoable edit.
+    callback start-auto(
+        project: Project,
+        clip-id: string,
+        max-chars-per-line: int,
+        template: string,
+    );
+
+    // Ask the running transcription to stop at its next checkpoint.
+    callback cancel-auto();
+
+    // --- transcription job state, published from the job thread --------
+    in-out property <bool> auto-running: false;
+    // 0..1 across the whole job (model install, decode, inference).
+    in-out property <float> auto-progress: 0.0;
+    // Current phase, e.g. "Installing the speech model… 102 MB of 148 MB".
+    in-out property <string> auto-stage: "";
+    // The phase cannot report a position, so the bar animates instead.
+    in-out property <bool> auto-indeterminate: false;
+    // Terminal states: exactly one goes true when `auto-running` drops.
+    in-out property <bool> auto-completed: false;
+    in-out property <bool> auto-failed: false;
+    in-out property <string> auto-status: "";
+
+    // Back to the pre-job state (dialog open while idle, and the close
+    // buttons after a terminal state).
+    public function reset-auto-state() {
+        self.auto-running = false;
+        self.auto-progress = 0.0;
+        self.auto-stage = "";
+        self.auto-indeterminate = false;
+        self.auto-completed = false;
+        self.auto-failed = false;
+        self.auto-status = "";
+    }
 }

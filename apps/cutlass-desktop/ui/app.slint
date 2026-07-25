@@ -26,12 +26,14 @@ import { LaunchScreen } from "launch.slint";
 import { FullscreenPreview } from "fullscreen-preview.slint";
 import { TitleBar } from "shell/title-bar.slint";
 import { ExportDialog } from "shell/export-dialog.slint";
+import { CaptionsDialog } from "shell/captions-dialog.slint";
 import { CanvasDialog } from "shell/canvas-dialog.slint";
 import { SettingsDialog } from "shell/settings-dialog.slint";
 import { MessageDialog } from "shell/message-dialog.slint";
 import { RelinkDialog } from "shell/relink-dialog.slint";
 import { ConfirmDeleteDialog } from "shell/confirm-delete-dialog.slint";
 import { ExportBackend } from "lib/export-backend.slint";
+import { CaptionBackend } from "lib/caption-backend.slint";
 import {
     PreviewBackend,
     PreviewDragResolution,
@@ -79,7 +81,7 @@ export {
     EyedropperSample,
 }from "lib/preview-backend.slint";
 export { InspectorBackend, SelectedClipInfo }from "lib/inspector-backend.slint";
-export { CaptionBackend, CaptionCueRow }from "lib/caption-backend.slint";
+export { CaptionAutoSource, CaptionBackend, CaptionCueRow }from "lib/caption-backend.slint";
 export { KeyframeBackend }from "lib/keyframe-backend.slint";
 export { GraphBackend, GraphChannel, GraphDot }from "lib/graph-backend.slint";
 export { StripBackend, StripTile }from "lib/strip-backend.slint";
@@ -564,6 +566,15 @@ export component AppWindow inherits Window {
                 }
                 return accept;
             }
+            // Auto captions, same rule as export: modal, and a running
+            // transcription must be stopped through its own Cancel.
+            if (AppState.captions-dialog-open) {
+                if (event.text == Key.Escape && !CaptionBackend.auto-running) {
+                    CaptionBackend.reset-auto-state();
+                    AppState.captions-dialog-open = false;
+                }
+                return accept;
+            }
             // The canvas dialog is modal too; Escape dismisses (changes
             // committed immediately, so nothing is lost on dismiss).
             if (AppState.canvas-dialog-open) {
@@ -935,6 +946,12 @@ export component AppWindow inherits Window {
     // Export settings dialog — declared last so the modal paints above
     // every panel and the title bar.
     if AppState.export-dialog-open: ExportDialog {
+        width: root.width;
+        height: root.height;
+    }
+
+    // Auto captions dialog (speech recognition), modal like the export one.
+    if AppState.captions-dialog-open: CaptionsDialog {
         width: root.width;
         height: root.height;
     }

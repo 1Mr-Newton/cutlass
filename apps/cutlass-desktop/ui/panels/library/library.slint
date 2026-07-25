@@ -23,8 +23,9 @@ import { AppState } from "../../state.slint";
 
 // Active tab + per-tab section. A global rather than panel state: the panel
 // unmounts while fullscreen preview is up, and the selection should survive
-// the round trip.
-global LibraryState {
+// the round trip. Exported because the Auto captions dialog shares the caption
+// template choice with the Captions section that opens it.
+export global LibraryState {
     in-out property <string> active-tab: "media";
     in-out property <string> media-section: "local";
     in-out property <string> audio-section: "local";
@@ -1044,13 +1045,23 @@ export component LibraryPanel inherits PanelBase {
                             }
                         }
 
+                        SubtleButton {
+                            label: CaptionBackend.auto-running
+                                ? "Transcribing " + round(clamp(CaptionBackend.auto-progress, 0.0, 1.0) * 100) + "%"
+                                : "Auto captions…";
+                            clicked => {
+                                AppState.captions-dialog-open = true;
+                                AppState.refocus-shortcuts();
+                            }
+                        }
+
                         Rectangle {
                             horizontal-stretch: 1;
                         }
                     }
 
                     CutlassText {
-                        text: "Imports read SubRip (.srt) and WebVTT (.vtt) and keep the file's own timings.";
+                        text: "Imports read SubRip (.srt) and WebVTT (.vtt) and keep the file's own timings. Auto captions transcribe a clip's speech on this machine.";
                         style: AppStore.theme.typography.caption;
                         foreground: AppStore.theme.text.muted;
                         wrap: word-wrap;

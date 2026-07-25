@@ -9,6 +9,7 @@ mod agent_vision;
 mod ai_media;
 mod analysis_index;
 mod audio;
+mod auto_captions;
 mod cache_references;
 mod cache_registry;
 mod cloud;
@@ -227,7 +228,12 @@ fn main() -> Result<(), slint::PlatformError> {
     // surface (drag/trim/split, inspector commits, clipboard, tracks,
     // keyframes, effects), audio playback, library/timeline tiles, and the
     // export job bind to the workers below. Still to come: live overrides (6).
-    let engine = wire_engine(&app, storage_layout, download_quota_bytes, job_manager)?;
+    let engine = wire_engine(
+        &app,
+        storage_layout,
+        download_quota_bytes,
+        job_manager.clone(),
+    )?;
 
     wire_timeline(&app, &engine.preview_worker, &engine.download_cache);
 
@@ -254,7 +260,12 @@ fn main() -> Result<(), slint::PlatformError> {
 
     wire_inspector(&app, &engine.preview_worker);
 
-    wire_captions(&app, &engine.preview_worker);
+    wire_captions(
+        &app,
+        &engine.preview_worker,
+        &job_manager,
+        &engine.cache_registry,
+    );
 
     // Hold engine handles for the app lifetime (background worker threads).
     let _engine = engine;

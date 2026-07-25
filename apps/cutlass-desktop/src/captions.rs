@@ -4,7 +4,11 @@
 //! [`crate::inspector`] does, so the cue list always agrees with what the
 //! timeline is showing. Every mutation lives in `wire_captions.rs`.
 
+mod auto;
+
 use slint::{Model, ModelRc};
+
+pub use auto::{auto_request, auto_source};
 
 use crate::{CaptionCueRow, CaptionGroupView, Clip, Sequence, TrackKind};
 

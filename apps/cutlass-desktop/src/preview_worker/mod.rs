@@ -96,7 +96,7 @@ use types::*;
 // already reaches `agent_replay` through the glob import above.
 #[allow(unused_imports)]
 pub(crate) use agent_bridge::{STALE_PLAN_SEED_ERROR, agent_apply_with_seed, agent_replay};
-pub use captions::CaptionOp;
+pub use captions::{CaptionOp, TranscribedCaptions};
 pub(crate) use rpc::ProjectMaintenanceGuard;
 pub(crate) use types::{
     ApplyTemplateRpcResult, ImportMediaRpcResult, NewProjectRpcResult, OpenProjectRpcResult,

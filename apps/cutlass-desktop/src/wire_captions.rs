@@ -1,8 +1,10 @@
 //! `CaptionBackend` wiring: caption lookups for the cue list, and the caption
 //! commands the caption inspector and library entry points fire.
 
-use slint::{ComponentHandle, ModelRc, VecModel};
+use slint::{ComponentHandle, Global, ModelRc, VecModel};
 
+use crate::auto_captions::AutoCaptionService;
+use crate::cache_registry::CacheRegistry;
 use crate::library_helpers::defer_main_thread;
 use crate::preview_worker::{CaptionOp, PreviewWorker};
 use crate::{AppWindow, CaptionBackend, CatalogEntry, captions, inspector};
@@ -10,7 +12,12 @@ use crate::{AppWindow, CaptionBackend, CatalogEntry, captions, inspector};
 /// Subtitle files the caption importer reads.
 const SUBTITLE_EXTENSIONS: &[&str] = &["srt", "vtt", "webvtt"];
 
-pub(crate) fn wire_captions(app: &AppWindow, preview_worker: &PreviewWorker) {
+pub(crate) fn wire_captions(
+    app: &AppWindow,
+    preview_worker: &PreviewWorker,
+    jobs: &cutlass_jobs::JobManager,
+    caches: &CacheRegistry,
+) {
     let backend = app.global::<CaptionBackend>();
 
     // Caption template catalog, once at startup — the model owns the list, so
@@ -174,6 +181,45 @@ pub(crate) fn wire_captions(app: &AppWindow, preview_worker: &PreviewWorker) {
             }
         });
     });
+
+    wire_auto_captions(&backend, preview_worker, jobs, caches);
+}
+
+/// Auto captions: the dialog's source lookup, and the transcription job it
+/// starts. The job owns no UI or engine state — it publishes progress into the
+/// properties above and sends its cues through the worker like any other edit.
+fn wire_auto_captions(
+    backend: &CaptionBackend<'_>,
+    preview_worker: &PreviewWorker,
+    jobs: &cutlass_jobs::JobManager,
+    caches: &CacheRegistry,
+) {
+    backend.on_auto_source(|project, selected_clip, playhead_tick| {
+        captions::auto_source(project, selected_clip.as_str(), playhead_tick)
+    });
+
+    let service = AutoCaptionService::new(
+        jobs.clone(),
+        caches.clone(),
+        preview_worker.handle(),
+        backend.as_weak(),
+    );
+    let starter = service.clone();
+    backend.on_start_auto(move |project, clip_id, max_chars_per_line, template| {
+        match captions::auto_request(
+            &project,
+            clip_id.as_str(),
+            max_chars_per_line,
+            template.as_str(),
+        ) {
+            Some(request) => starter.start(request),
+            None => tracing::error!(
+                clip = clip_id.as_str(),
+                "auto captions ignored: the clip or its media is gone"
+            ),
+        }
+    });
+    backend.on_cancel_auto(move || service.cancel());
 }
 
 async fn pick_subtitle_path() -> Option<std::path::PathBuf> {

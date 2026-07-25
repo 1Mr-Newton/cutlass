@@ -10,12 +10,31 @@ use super::*;
 use cutlass_captions::{ImportOptions, Placement, parse_subtitles, place_subtitles, wrap};
 use cutlass_models::{
     CaptionCueSpec, CaptionGroupId, CaptionGroupSpec, CaptionHighlight, CaptionHighlightMode,
-    CaptionLayout, CaptionSource, CaptionStyle, CaptionStyleScope, TextStyle,
+    CaptionLayout, CaptionSource, CaptionStyle, CaptionStyleScope, MediaId, TextStyle,
 };
 
 /// Default hold for a hand-added caption line, in seconds — long enough to type
 /// into, short enough to sit between two others.
 const MANUAL_CUE_SECONDS: i64 = 3;
+
+/// Cues produced by the transcription job, ready to place.
+///
+/// Boxed inside [`CaptionOp`]: it is by far the largest payload the caption ops
+/// carry, and every other worker message would otherwise pay for its size.
+#[derive(Debug, Clone)]
+pub struct TranscribedCaptions {
+    /// Segmented cues, already placed on the timeline's clock.
+    pub cues: Vec<CaptionCueSpec>,
+    pub label: String,
+    pub template: String,
+    /// The layout the job segmented with, so the group's later reflows match.
+    pub layout: CaptionLayout,
+    /// Pool id of the transcribed asset, for the group's provenance.
+    pub media: String,
+    pub language: Option<String>,
+    /// Recognizer model id, so a re-run can be compared against this pass.
+    pub model: String,
+}
 
 /// One caption edit from the UI. Bundled into a single [`WorkerMsg`] variant
 /// rather than a dozen: they all resolve raw ids, apply one caption command,
@@ -36,6 +55,16 @@ pub enum CaptionOp {
         path: PathBuf,
         tick: i64,
         template: String,
+    },
+    /// Place the cues a transcription job produced (see `crate::auto_captions`).
+    /// Segmentation already happened off-thread; this only resolves the lane and
+    /// applies one `AddCaptionGroup`.
+    AddTranscribed {
+        captions: Box<TranscribedCaptions>,
+        /// How many cues landed, or why none did. The job waits for this so the
+        /// dialog reports what actually happened instead of assuming the edit
+        /// was accepted.
+        reply: Sender<Result<usize, String>>,
     },
     RemoveGroup {
         group: String,
@@ -98,6 +127,10 @@ pub(super) fn caption_op(engine: &mut Engine, op: CaptionOp, ui: &UiSink) {
             tick,
             template,
         } => import_subtitles(engine, &path, tick, &template, ui),
+        CaptionOp::AddTranscribed { captions, reply } => {
+            let outcome = add_transcribed(engine, *captions, ui);
+            let _ = reply.send(outcome);
+        }
         CaptionOp::RemoveGroup { group } => with_group(engine, &group, ui, |group| {
             EditCommand::RemoveCaptionGroup { group }
         }),
@@ -324,6 +357,81 @@ fn import_subtitles(engine: &mut Engine, path: &Path, tick: i64, template: &str,
             engine.rollback_group();
             publish_session_error(ui, format!("{}: {e}", file_name(path)));
             publish_projection(engine, ui);
+        }
+    }
+}
+
+/// Place transcribed cues as one auto-sourced caption group.
+///
+/// The job segmented against the same timeline rate, so nothing is retimed
+/// here; what remains is finding the text lane (creating one inside the history
+/// group when there is none) and recording which asset and model produced the
+/// lines, so a later re-run can be compared against this pass.
+///
+/// Returns the number of cues placed, so the transcription dialog reports the
+/// engine's answer rather than its own optimism.
+fn add_transcribed(
+    engine: &mut Engine,
+    transcribed: TranscribedCaptions,
+    ui: &UiSink,
+) -> Result<usize, String> {
+    let Some(media) = parse_raw_id(&transcribed.media).map(MediaId::from_raw) else {
+        error!(
+            media = transcribed.media,
+            "auto captions ignored: unparsable media id"
+        );
+        return Err("The transcribed clip is no longer on the timeline".to_owned());
+    };
+    if engine.project().media(media).is_none() {
+        return Err("The transcribed clip's media is no longer in this project".to_owned());
+    }
+
+    engine.begin_group();
+    let track = match first_lane_of_kind(engine, TrackKind::Text) {
+        Some(lane) => lane,
+        None => match create_track(engine, TrackKind::Text, 0) {
+            Ok(id) => id,
+            Err(e) => {
+                error!("auto captions failed creating text track: {e}");
+                engine.rollback_group();
+                return Err(format!("Could not create a text lane: {e}"));
+            }
+        },
+    };
+
+    let mut spec = CaptionGroupSpec {
+        track,
+        label: transcribed.label,
+        source: CaptionSource::Auto {
+            media,
+            language: transcribed.language,
+            model: transcribed.model,
+        },
+        template: None,
+        style: None,
+        layout: Some(transcribed.layout),
+        highlight: None,
+    };
+    if !transcribed.template.is_empty() {
+        spec = spec.with_template(transcribed.template);
+    }
+
+    let count = transcribed.cues.len();
+    match engine.apply(Command::Edit(EditCommand::AddCaptionGroup {
+        group: Box::new(spec),
+        cues: transcribed.cues,
+    })) {
+        Ok(_) => {
+            engine.commit_group();
+            info!(%media, count, "placed transcribed captions");
+            publish_projection(engine, ui);
+            Ok(count)
+        }
+        Err(e) => {
+            error!(%media, count, "auto captions rejected: {e}");
+            engine.rollback_group();
+            publish_projection(engine, ui);
+            Err(format!("Could not add the captions: {e}"))
         }
     }
 }
