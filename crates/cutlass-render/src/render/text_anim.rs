@@ -9,7 +9,7 @@ use cutlass_compositor::GlyphInstance;
 use cutlass_models::AnimationSlot;
 use cutlass_text::{ClusterBox, ShapedText, TextStyle};
 
-use crate::scene::TextAnimation;
+use crate::scene::{TextAnimation, TextHighlight};
 
 /// Multiplicative / additive delta applied to one cluster's rest placement.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -292,11 +292,21 @@ pub(super) fn extent_origin(
 }
 
 /// Stable atlas cache key for a text run + style (shape-affecting fields).
-pub(super) fn atlas_key(content: &str, style: &TextStyle) -> u64 {
+///
+/// A highlighted run packs both paints into one atlas, so the *fill* of the
+/// highlight belongs in the key — but deliberately not its range: the atlas
+/// must stay valid as the active word moves, or every word would rebuild and
+/// re-upload it.
+pub(super) fn atlas_key(
+    content: &str,
+    style: &TextStyle,
+    highlight: Option<&TextHighlight>,
+) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut h = DefaultHasher::new();
     content.hash(&mut h);
+    highlight.map(|highlight| highlight.fill).hash(&mut h);
     style.font_size.to_bits().hash(&mut h);
     style.line_height.to_bits().hash(&mut h);
     style.color.hash(&mut h);

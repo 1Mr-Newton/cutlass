@@ -22,9 +22,9 @@
 
 use cutlass_core::{RationalTime, resample};
 use cutlass_models::{
-    AnimationRef, AnimationSlot, ClipId, ClipSource, ClipTransform, ColorAdjustments, Easing,
-    EffectInstance, Filter, Generator, LayerStyles, MediaKind, MotionBlur, Project,
-    look_animation_combo_period_ticks, look_animation_window_ticks,
+    AnimationRef, AnimationSlot, CaptionHighlightMode, ClipId, ClipSource, ClipTransform,
+    ColorAdjustments, Easing, EffectInstance, Filter, Generator, LayerStyles, MediaKind,
+    MotionBlur, Project, look_animation_combo_period_ticks, look_animation_window_ticks,
 };
 
 use crate::animation::{apply_look_animations, is_per_character, scaled_ticks, text_knobs};
@@ -32,6 +32,7 @@ use crate::grade::resolve_color_grade_at;
 use crate::scene::{
     LayerSource, ResolvedPass, Scene, SceneBackground, SceneChromaKey, SceneGlow, SceneLayer,
     SceneLut, SceneMask, SceneOutline, SceneShadow, SceneStyles, SizeSpec, TextAnimation,
+    TextHighlight,
 };
 
 mod generator;
@@ -531,8 +532,15 @@ fn resolve_clip(
                     layer.blend_mode = clip.blend_mode;
                     layer.styles = styles;
                 }
-                if let LayerSource::Text { animation, .. } = &mut layer.source {
+                if let LayerSource::Text {
+                    animation,
+                    highlight,
+                    ..
+                } = &mut layer.source
+                {
                     *animation = sample_text_animation(clip, local_tick, local_tick_f, t.rate);
+                    *highlight =
+                        sample_caption_highlight(project, clip, generator, local_tick, t.rate);
                 }
                 layer
             }))
@@ -643,6 +651,70 @@ fn sample_text_animation(
     }
 
     None
+}
+
+/// Sample a caption group's word highlight for one cue clip.
+///
+/// `None` — render the cue plainly — whenever anything the highlight needs is
+/// missing: no cue metadata, no word timings (a hand-typed line or a plain
+/// SRT), a group whose highlight is off, or a playhead before the first word.
+fn sample_caption_highlight(
+    project: &Project,
+    clip: &cutlass_models::Clip,
+    generator: &Generator,
+    local_tick: i64,
+    rate: cutlass_core::Rational,
+) -> Option<TextHighlight> {
+    let cue = clip.caption.as_ref().filter(|cue| cue.has_word_timings())?;
+    let highlight = project
+        .timeline()
+        .caption_group(cue.group)?
+        .highlight
+        .as_ref()
+        .filter(|highlight| highlight.is_active())?;
+    let Generator::Text { content, style } = generator else {
+        return None;
+    };
+
+    let ms = (local_tick.max(0) as f64 * rate.seconds_per_unit() * 1000.0).round();
+    let active = cue.active_word_at(ms.clamp(0.0, f64::from(u32::MAX)) as u32)?;
+    let word = cue.words.get(active)?;
+    let span = match highlight.mode {
+        // Progressive fill: everything spoken so far, from the line's first
+        // word, so the sung part reads as one block.
+        CaptionHighlightMode::Line => {
+            cue.words.first()?.range.start as usize..word.range.end as usize
+        }
+        CaptionHighlightMode::Word => word.byte_range(),
+        CaptionHighlightMode::Off => return None,
+    };
+
+    Some(TextHighlight {
+        range: cased_range(content, style.case, span)?,
+        fill: highlight.fill,
+        plate: highlight.plate,
+        plate_radius: highlight.plate_radius,
+        scale: highlight.scale,
+    })
+}
+
+/// Move a byte range from the cue's stored text onto the cased text the
+/// rasterizer actually shapes.
+///
+/// Casing maps characters independently, so the range's new bounds are just the
+/// cased lengths of the text before it and the text inside it. `None` when the
+/// range does not land on character boundaries — a hand-edited project, and not
+/// worth highlighting the wrong letters over.
+fn cased_range(
+    content: &str,
+    case: cutlass_models::TextCase,
+    range: std::ops::Range<usize>,
+) -> Option<std::ops::Range<usize>> {
+    if case == cutlass_models::TextCase::Normal {
+        return content.get(range.clone()).map(|_| range);
+    }
+    let start = case.apply(content.get(..range.start)?).len();
+    Some(start..start + case.apply(content.get(range)?).len())
 }
 
 /// Sample `clip.effects` at clip-local `tick` into compositor-ready passes.

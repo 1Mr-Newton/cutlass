@@ -161,6 +161,7 @@ fn text_generator_maps_style_and_defers_size() {
             content,
             style,
             animation,
+            highlight: _,
             raster_density,
         } => {
             assert!(animation.is_none());

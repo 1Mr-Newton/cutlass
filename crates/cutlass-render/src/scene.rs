@@ -32,6 +32,26 @@ pub struct TextAnimation {
     pub stagger: f32,
 }
 
+/// The span of a caption cue emphasized at this instant (karaoke highlight).
+///
+/// Sampled from the cue's word timings against the playhead, so the Scene
+/// carries a plain byte range and colors — realize turns that into recolored
+/// clusters, a plate, and a size bump.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextHighlight {
+    /// Byte range into the layer's `content` (post-casing, so it indexes the
+    /// string the rasterizer shapes).
+    pub range: std::ops::Range<usize>,
+    /// Fill for the highlighted clusters.
+    pub fill: [u8; 4],
+    /// Plate painted behind them, or `None` for a pure color swap.
+    pub plate: Option<[u8; 4]>,
+    /// Plate corner rounding, `0.0` (square) ..= `1.0` (pill).
+    pub plate_radius: f32,
+    /// Size multiplier for the highlighted clusters (`1.0` = no emphasis).
+    pub scale: f32,
+}
+
 pub use cutlass_core::RationalTime;
 
 /// One sampled GPU effect pass attached to a clip at resolve time.
@@ -416,12 +436,15 @@ pub enum LayerSource {
         /// Seconds since the clip's timeline start.
         local_time: f64,
     },
-    /// A text run. When `animation` is `Some`, realize draws per-character
-    /// instanced glyphs; otherwise the whole run is rasterized as one bitmap.
+    /// A text run. When `animation` or `highlight` is `Some`, realize draws
+    /// per-character instanced glyphs (both work on clusters); otherwise the
+    /// whole run is rasterized as one bitmap.
     Text {
         content: String,
         style: TextStyle,
         animation: Option<TextAnimation>,
+        /// Caption word highlight active at this instant.
+        highlight: Option<TextHighlight>,
         /// Cumulative raster density relative to reference resolve metrics
         /// (supersample `S`, then any [`Scene::scale`] factors). Catalog
         /// per-character animation deltas are in reference run-pixels and
@@ -538,6 +561,7 @@ mod tests {
                 content: "hi".into(),
                 style: TextStyle::new(48.0),
                 animation: None,
+                highlight: None,
                 raster_density: 1.0,
             },
             center: [50.0, 25.0],
@@ -640,6 +664,7 @@ mod tests {
                 content: "Hi".into(),
                 style: TextStyle::new(100.0),
                 animation: None,
+                highlight: None,
                 raster_density: 2.0,
             },
             center: [960.0, 540.0],

@@ -165,7 +165,7 @@ pub(super) fn composite_from_realized<'a>(
             glyphs,
             instances,
             atlas_key,
-            background,
+            cards,
             placement,
             fx,
             color_grade,
@@ -174,9 +174,9 @@ pub(super) fn composite_from_realized<'a>(
             styles,
             ..
         } => {
-            // Background is composited as a separate preceding layer in the
-            // job walk; this arm only builds the glyph instances.
-            let _ = background;
+            // Cards are composited as separate preceding layers in the job
+            // walk; this arm only builds the glyph instances.
+            let _ = cards;
             CompositeLayer::glyphs(
                 GlyphsLayer {
                     atlas_key: *atlas_key,
@@ -293,8 +293,9 @@ pub(super) enum Realized {
         glyphs: Vec<RgbaImage>,
         instances: Vec<GlyphInstance>,
         atlas_key: u64,
-        /// Optional whole-run background card drawn behind the glyphs.
-        background: Option<(RgbaImage, LayerPlacement)>,
+        /// Cards drawn behind the glyphs, back to front: the whole-run
+        /// background, then a caption's active-word plate.
+        cards: Vec<(RgbaImage, LayerPlacement)>,
         /// Layer opacity multiplier (instance opacities are pre-multiplied).
         placement: LayerPlacement,
         effects: Vec<ResolvedPass>,
@@ -368,11 +369,13 @@ impl Renderer {
                 content,
                 style,
                 animation,
+                highlight,
                 raster_density: _,
             } => {
-                // Transition sides keep the bitmap path — per-character
-                // animation on a transition edge is not a supported surface.
-                let _ = animation;
+                // Transition sides keep the bitmap path — neither
+                // per-character animation nor a caption highlight is a
+                // supported surface on a transition edge.
+                let _ = (animation, highlight);
                 text::realize_text_bitmap(
                     &mut self.text,
                     layer,

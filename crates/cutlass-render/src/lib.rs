@@ -48,4 +48,4 @@ pub use resolve::{
     GESTURE_IDENTITY_TRANSFORM, GestureScenePartition, ParamOverrides, ResolveOverrides,
     canvas_size, resolve, resolve_gesture_partitions, resolve_with,
 };
-pub use scene::{LayerSource, Scene, SceneLayer, SizeSpec, TextAnimation};
+pub use scene::{LayerSource, Scene, SceneLayer, SizeSpec, TextAnimation, TextHighlight};

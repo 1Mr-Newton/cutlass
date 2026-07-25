@@ -106,6 +106,7 @@ impl Renderer {
                     content,
                     style,
                     animation,
+                    highlight,
                     raster_density,
                 } => {
                     let Some(layer_realized) = text::realize_text_layer(
@@ -114,6 +115,7 @@ impl Renderer {
                         content,
                         style,
                         animation,
+                        highlight,
                         *raster_density,
                         [scene.width as f32, scene.height as f32],
                         layer.effects.clone(),
@@ -386,37 +388,44 @@ impl Renderer {
                     });
                 }
                 Realized::Glyphs {
-                    background: Some((bg_image, bg_placement)),
+                    cards,
                     effects,
                     fx,
                     color_grade,
                     lut,
                     blend_mode,
                     ..
-                } => {
-                    // Whole-run background card sits behind the glyphs.
-                    let bg_effects = if effects.is_empty() {
+                } if !cards.is_empty() => {
+                    // Background card, then a caption's active-word plate, then
+                    // the glyphs on top.
+                    let card_effects = if effects.is_empty() {
                         &[]
                     } else {
                         let chain = &instance_store[effect_idx];
                         effect_idx += 1;
                         chain.as_slice()
                     };
-                    layer_storage.push(
-                        CompositeLayer::rgba(bg_image, *bg_placement)
-                            .with_fx(*fx)
-                            .with_effects(bg_effects)
-                            .with_color_grade(*color_grade)
-                            .with_lut(layer_lut(lut, &self.luts))
-                            .with_blend_mode(*blend_mode),
-                    );
-                    jobs.push(LayerJob::Plain {
-                        storage_idx: layer_storage.len() - 1,
-                    });
+                    for (image, placement) in cards {
+                        layer_storage.push(
+                            CompositeLayer::rgba(image, *placement)
+                                .with_fx(*fx)
+                                .with_effects(card_effects)
+                                .with_color_grade(*color_grade)
+                                .with_lut(layer_lut(lut, &self.luts))
+                                .with_blend_mode(*blend_mode),
+                        );
+                        jobs.push(LayerJob::Plain {
+                            storage_idx: layer_storage.len() - 1,
+                        });
+                    }
                     // Glyphs share the same effect chain reference when present.
                     // Per-glyph instances own placement; transform motion blur
                     // is not applied to glyph runs (bitmap text still blurs).
-                    let glyph_effects = if effects.is_empty() { &[] } else { bg_effects };
+                    let glyph_effects = if effects.is_empty() {
+                        &[]
+                    } else {
+                        card_effects
+                    };
                     layer_storage.push(composite_from_realized(
                         r,
                         &self.stills,
