@@ -23,6 +23,7 @@ import {
 } from "inspector-widgets.slint";
 import { InspectorRowMetrics } from "inspector-metrics.slint";
 import { AudioMixInspector } from "audio-inspector.slint";
+import { CaptionInspector } from "caption-inspector.slint";
 import { TextInspector } from "text-inspector.slint";
 import { TransformInspector } from "transform-inspector.slint";
 import { CropInspector } from "crop-inspector.slint";
@@ -752,6 +753,11 @@ export component InspectorPanel inherits PanelBase {
     private property <bool> is-text-selection: has-selection
         && selection.found
         && selection.track-kind == TrackKind.text;
+    // A caption cue is a text clip that belongs to a group; it gets the
+    // caption sheet (cue list, group style, segmentation) instead of the
+    // title sheet.
+    private property <bool> is-caption-selection: is-text-selection
+        && selection.clip.caption-group != "";
 
     function format-fps(num: int, den: int) -> string {
         if (den == 1) {
@@ -811,7 +817,14 @@ export component InspectorPanel inherits PanelBase {
         height: 100%;
     }
 
-    if is-text-selection: TextInspector {
+    if is-caption-selection: CaptionInspector {
+        width: 100%;
+        height: 100%;
+        track-id: TimelineStore.selected-track-id;
+        model: selection.clip;
+    }
+
+    if is-text-selection && !is-caption-selection: TextInspector {
         width: 100%;
         height: 100%;
         track-id: TimelineStore.selected-track-id;

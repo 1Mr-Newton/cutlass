@@ -63,7 +63,9 @@ component PillTab inherits Rectangle {
 }
 
 
-component MultilineTextInput inherits Rectangle {
+// Shared with the caption sheet, which edits cue text the same way (typing is
+// local, the engine edit commits on blur).
+export component MultilineTextInput inherits Rectangle {
     in-out property <string> text;
     in property <string> placeholder-text;
     in property <string> accessibility-label: root.placeholder-text;

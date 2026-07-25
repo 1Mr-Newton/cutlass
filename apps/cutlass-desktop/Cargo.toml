@@ -20,6 +20,7 @@ slint = { version = "=1.17.1", features = [
 # bridge like the iOS/Android apps. The same `crates/cutlass-engine` drives
 # three unrelated frontends.
 cutlass-analysis = { path = "../../crates/cutlass-analysis", features = ["sqlite"] }
+cutlass-captions = { path = "../../crates/cutlass-captions" }
 cutlass-commands = { path = "../../crates/cutlass-commands" }
 cutlass-compositor = { path = "../../crates/cutlass-compositor" }
 cutlass-decoder = { path = "../../crates/cutlass-decoder" }

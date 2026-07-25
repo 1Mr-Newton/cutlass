@@ -6,6 +6,7 @@
 //! export, live gesture/generator overrides, and the AI agent bridge.
 
 mod agent_bridge;
+mod captions;
 mod clip_audio;
 mod clip_look;
 mod clip_place;
@@ -64,6 +65,7 @@ use crate::thumbnails::{ThumbKind, ThumbnailHandle};
 use crate::{EditorStore, ExportBackend, PreviewStore};
 
 use agent_bridge::*;
+use captions::*;
 use clip_audio::*;
 use clip_look::*;
 use clip_place::*;
@@ -94,6 +96,7 @@ use types::*;
 // already reaches `agent_replay` through the glob import above.
 #[allow(unused_imports)]
 pub(crate) use agent_bridge::{STALE_PLAN_SEED_ERROR, agent_apply_with_seed, agent_replay};
+pub use captions::CaptionOp;
 pub(crate) use rpc::ProjectMaintenanceGuard;
 pub(crate) use types::{
     ApplyTemplateRpcResult, ImportMediaRpcResult, NewProjectRpcResult, OpenProjectRpcResult,

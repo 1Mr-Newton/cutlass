@@ -71,9 +71,11 @@ use cache_ui::*;
 
 mod bootstrap;
 mod cache_ui;
+mod captions;
 mod color_math;
 mod library_helpers;
 mod session;
+mod wire_captions;
 mod wire_color;
 mod wire_engine;
 mod wire_inspector;
@@ -82,6 +84,7 @@ mod wire_settings;
 mod wire_timeline;
 mod wire_ui;
 
+use wire_captions::wire_captions;
 use wire_engine::wire_engine;
 use wire_inspector::wire_inspector;
 use wire_preview::wire_preview;
@@ -250,6 +253,8 @@ fn main() -> Result<(), slint::PlatformError> {
     wire_preview(&app, &engine.preview_worker);
 
     wire_inspector(&app, &engine.preview_worker);
+
+    wire_captions(&app, &engine.preview_worker);
 
     // Hold engine handles for the app lifetime (background worker threads).
     let _engine = engine;

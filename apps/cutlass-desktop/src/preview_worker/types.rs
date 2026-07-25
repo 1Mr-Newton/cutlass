@@ -219,6 +219,11 @@ pub(super) enum WorkerMsg {
         clip: String,
         generator: Generator,
     },
+    /// One caption edit (create / import / restyle / re-segment). The whole
+    /// caption surface rides one variant because every op resolves raw ids,
+    /// applies one caption command, and republishes — see
+    /// [`CaptionOp`](crate::preview_worker::CaptionOp).
+    Caption(CaptionOp),
     /// Resize a shape clip's reference-pixel dimensions. Preserves shape kind
     /// and fill from the committed generator.
     SetShapeSize {

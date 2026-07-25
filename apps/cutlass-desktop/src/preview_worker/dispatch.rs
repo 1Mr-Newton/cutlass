@@ -108,6 +108,7 @@ pub(super) fn dispatch(
         WorkerMsg::SetGenerator { clip, generator } => {
             set_generator_and_publish(engine, &clip, generator, ui)
         }
+        WorkerMsg::Caption(op) => caption_op(engine, op, ui),
         WorkerMsg::SetShapeSize {
             clip,
             width,

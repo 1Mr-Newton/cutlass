@@ -20,6 +20,8 @@ pub(super) fn message_invalidates_preview(msg: &WorkerMsg) -> bool {
             | WorkerMsg::RemoveClips { .. }
             | WorkerMsg::SetGenerator { .. }
             | WorkerMsg::SetGeneratorFill { .. }
+            // Captions place, restyle, and retime text clips on the canvas.
+            | WorkerMsg::Caption(_)
             | WorkerMsg::SetClipSpeed { .. }
             | WorkerMsg::SetClipPitch { .. }
             | WorkerMsg::SetSpeedCurve { .. }

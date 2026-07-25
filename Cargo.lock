@@ -1442,6 +1442,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cutlass-captions"
+version = "0.7.0-alpha.0"
+dependencies = [
+ "cutlass-models",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "cutlass-cli"
 version = "0.7.0-alpha.0"
 dependencies = [
@@ -1534,6 +1542,7 @@ dependencies = [
  "crossbeam-channel",
  "cutlass-ai",
  "cutlass-analysis",
+ "cutlass-captions",
  "cutlass-cloud",
  "cutlass-commands",
  "cutlass-compositor",

@@ -190,6 +190,12 @@ impl WorkerHandle {
         let _ = self.tx.send(WorkerMsg::SetGenerator { clip, generator });
     }
 
+    /// Send one caption edit (create, import, restyle, re-segment). Each op is
+    /// one undoable engine edit; see [`CaptionOp`].
+    pub fn caption(&self, op: CaptionOp) {
+        let _ = self.tx.send(WorkerMsg::Caption(op));
+    }
+
     pub fn set_shape_size(&self, clip: String, width: f32, height: f32) {
         let _ = self.tx.send(WorkerMsg::SetShapeSize {
             clip,
