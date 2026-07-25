@@ -32,6 +32,7 @@
 
 mod animated;
 mod effects;
+mod highlight;
 mod style;
 
 use std::ops::Range;
@@ -44,6 +45,7 @@ use cutlass_core::{ByteBudgetLru, RASTER_MEMO_BUDGET_BYTES, RgbaImage};
 
 pub use animated::{AnimatedText, paint_animated};
 pub use effects::painted_size;
+pub use highlight::{Highlight, HighlightPlate, HighlightedText};
 pub use style::{
     FontFamily, TextAlign, TextBackground, TextShadow, TextStroke, TextStyle, TextVerticalAlign,
 };
@@ -139,6 +141,10 @@ pub struct TextRenderer {
     shape_memo: ByteBudgetLru<ShapeKey, ShapedText>,
     /// Memoized [`rasterize`](Self::rasterize) results (padding folded in).
     raster_memo: ByteBudgetLru<RasterKey, RgbaImage>,
+    /// Memoized [`animate`](Self::animate) results — per-cluster stroke and
+    /// shadow paint, which a caption highlight would otherwise repeat for
+    /// every frame of every cue.
+    animate_memo: ByteBudgetLru<RasterKey, AnimatedText>,
 }
 
 impl TextRenderer {
@@ -149,6 +155,7 @@ impl TextRenderer {
             swash_cache: SwashCache::new(),
             shape_memo: ByteBudgetLru::new(RASTER_MEMO_BUDGET_BYTES),
             raster_memo: ByteBudgetLru::new(RASTER_MEMO_BUDGET_BYTES),
+            animate_memo: ByteBudgetLru::new(RASTER_MEMO_BUDGET_BYTES),
         }
     }
 
@@ -164,6 +171,7 @@ impl TextRenderer {
         self.font_system.db_mut().load_font_data(data);
         self.shape_memo.clear();
         self.raster_memo.clear();
+        self.animate_memo.clear();
         self.font_system.db().len().saturating_sub(before)
     }
 
@@ -320,6 +328,44 @@ impl TextRenderer {
             extent,
             clusters: out,
         }
+    }
+
+    /// Shape `text` and paint it per cluster for character-level animation:
+    /// stroke and shadow folded into each cluster's bitmap, the background
+    /// card kept as a separate whole-run image.
+    ///
+    /// Memoized like [`rasterize`](Self::rasterize), which matters because
+    /// stroke paint is per cluster: an animated or highlighted caption calls
+    /// this every frame and must not re-dilate every letter each time.
+    pub fn animate(&mut self, text: &str, style: &TextStyle) -> AnimatedText {
+        let key = RasterKey::new(text, style);
+        if let Some(hit) = self.animate_memo.get_cloned(&key) {
+            return hit;
+        }
+        let shaped = self.shape(text, style);
+        let painted = animated::paint_animated(&shaped, style);
+        let cost = painted.memo_bytes();
+        self.animate_memo.insert(key, painted.clone(), cost);
+        painted
+    }
+
+    /// Paint `text` for word highlighting: the resting run, the same clusters
+    /// in the highlight fill, and the plate behind the highlighted span.
+    ///
+    /// The highlight's byte range indexes `text`. Both paints are memoized, so
+    /// walking a cue word by word costs one memo lookup pair per frame — no
+    /// re-shaping, and no per-word stroke repaint.
+    pub fn paint_highlighted(
+        &mut self,
+        text: &str,
+        style: &TextStyle,
+        highlight: &Highlight,
+    ) -> HighlightedText {
+        let shaped = self.shape(text, style);
+        let rest = self.animate(text, style);
+        let lit_style = style.clone().with_color(highlight.fill);
+        let lit = self.animate(text, &lit_style);
+        highlight::paint_highlighted(&shaped, rest, lit, style, highlight)
     }
 
     /// Shape `text` with `style` and rasterize it to a single straight-alpha

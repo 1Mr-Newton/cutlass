@@ -473,15 +473,15 @@ fn index_1d(w: u32, outer: i32, inner: i32, horizontal: bool) -> usize {
 }
 
 /// Axis-aligned card rectangle in bitmap space.
-struct CardRect {
-    x0: f32,
-    y0: f32,
-    x1: f32,
-    y1: f32,
+pub(crate) struct CardRect {
+    pub(crate) x0: f32,
+    pub(crate) y0: f32,
+    pub(crate) x1: f32,
+    pub(crate) y1: f32,
 }
 
 /// Fill a rounded rectangle (axis-aligned) with analytic coverage.
-fn fill_rounded_rect(
+pub(crate) fn fill_rounded_rect(
     pixels: &mut [u8],
     width: u32,
     height: u32,
