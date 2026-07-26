@@ -317,7 +317,7 @@ fn import_subtitles(engine: &mut Engine, path: &Path, tick: i64, template: &str,
     };
 
     engine.begin_group();
-    let track_id = match first_lane_of_kind(engine, TrackKind::Text) {
+    let track_id = match free_text_lane(engine, &specs) {
         Some(lane) => lane,
         None => match create_track(engine, TrackKind::Text, 0) {
             Ok(id) => id,
@@ -387,7 +387,7 @@ fn add_transcribed(
     }
 
     engine.begin_group();
-    let track = match first_lane_of_kind(engine, TrackKind::Text) {
+    let track = match free_text_lane(engine, &transcribed.cues) {
         Some(lane) => lane,
         None => match create_track(engine, TrackKind::Text, 0) {
             Ok(id) => id,
@@ -436,14 +436,48 @@ fn add_transcribed(
     }
 }
 
-/// The lowest text lane, for an import that wasn't dropped on a specific lane.
-fn first_lane_of_kind(engine: &Engine, kind: TrackKind) -> Option<TrackId> {
+/// The lowest text lane with room for every cue.
+///
+/// A caption batch lands at times the transcript (or subtitle file) fixed, so
+/// unlike a manual cue it cannot slide past a blocker. Reusing the first text
+/// lane blindly means a second pass — captions for a newly imported clip that
+/// starts where the first one did — is rejected wholesale for overlap after
+/// the transcription has already run. Falling through to the next free lane,
+/// and to a new one when every lane is busy, matches how a drop finds a home.
+fn free_text_lane(engine: &Engine, cues: &[CaptionCueSpec]) -> Option<TrackId> {
+    let mut spans: Vec<(i64, i64)> = cues
+        .iter()
+        .map(|cue| (cue.timeline.start.value, cue.timeline.end_tick()))
+        .collect();
+    spans.sort_unstable();
     engine
         .project()
         .timeline()
         .tracks_ordered()
-        .find(|track| track.kind == kind)
+        .find(|track| track.kind == TrackKind::Text && spans_free(track, &spans))
         .map(|track| track.id)
+}
+
+/// Whether every span in `spans` (sorted by start) clears every clip on
+/// `track`. Both sides are in start order, so one merge walk answers it in
+/// O(cues + clips) rather than scanning the lane once per cue.
+fn spans_free(track: &Track, spans: &[(i64, i64)]) -> bool {
+    let clips = track.clips_ordered();
+    let mut next = 0;
+    for &(start, end) in spans {
+        while clips
+            .get(next)
+            .is_some_and(|clip| clip.timeline.end_tick() <= start)
+        {
+            next += 1;
+        }
+        match clips.get(next) {
+            Some(clip) if clip.timeline.start.value < end => return false,
+            Some(_) => {}
+            None => return true,
+        }
+    }
+    true
 }
 
 /// The named template's segmentation rules, or the defaults.
@@ -695,3 +729,6 @@ fn merge_with_next(engine: &mut Engine, clip: &str, ui: &UiSink) {
         ui,
     );
 }
+
+#[cfg(test)]
+mod tests;
