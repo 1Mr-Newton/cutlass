@@ -13,6 +13,7 @@ use crate::caption::{
 use crate::clip::{Clip, ClipSource, Generator};
 use crate::error::ModelError;
 use crate::ids::{CaptionGroupId, ClipId, TrackId};
+use crate::look::AnimationRef;
 use crate::param::Param;
 use crate::time::TimeRange;
 use crate::track::TrackKind;
@@ -328,7 +329,30 @@ impl Project {
         let (left_words, mut right_words) = split_words(&cue.words, cut_ms);
         let (left_text, right_text) = split_text(&text, &left_words, &mut right_words);
 
-        let right_id = self.split_clip(clip_id, at)?;
+        // A general split refuses to re-time a clip's look animation, which
+        // would rule out almost every animated cue: a one-line karaoke cue is
+        // shorter than the half-second entrance window, so cutting it always
+        // moves that window. A cue is not a shot, though — every cue carries
+        // the whole group's look, the same rule a restyle writes through — so
+        // the slots come off for the cut and go back on both halves, each line
+        // playing the look in full.
+        let looks = {
+            let clip = self
+                .timeline
+                .clip_mut(clip_id)
+                .expect("clip existence checked above");
+            LookSlots::take(clip)
+        };
+        let split = self.split_clip(clip_id, at);
+        // Restored before the error is propagated, so a refused split leaves
+        // the cue exactly as it was.
+        if let Some(clip) = self.timeline.clip_mut(clip_id) {
+            looks.restore(clip);
+        }
+        let right_id = split?;
+        if let Some(clip) = self.timeline.clip_mut(right_id) {
+            looks.restore(clip);
+        }
 
         if let Some(clip) = self.timeline.clip_mut(clip_id) {
             set_cue_text(clip, left_text, left_words);
@@ -571,6 +595,29 @@ fn retime_words(previous: &[CaptionWord], text: &str) -> Vec<CaptionWord> {
             }
         })
         .collect()
+}
+
+/// A cue's look-animation slots, lifted off it for the duration of a split.
+struct LookSlots {
+    animation_in: Option<AnimationRef>,
+    animation_out: Option<AnimationRef>,
+    animation_combo: Option<AnimationRef>,
+}
+
+impl LookSlots {
+    fn take(clip: &mut Clip) -> Self {
+        Self {
+            animation_in: clip.animation_in.take(),
+            animation_out: clip.animation_out.take(),
+            animation_combo: clip.animation_combo.take(),
+        }
+    }
+
+    fn restore(&self, clip: &mut Clip) {
+        clip.animation_in = self.animation_in.clone();
+        clip.animation_out = self.animation_out.clone();
+        clip.animation_combo = self.animation_combo.clone();
+    }
 }
 
 /// Partition word timings at `cut_ms`: words that end at or before the cut stay

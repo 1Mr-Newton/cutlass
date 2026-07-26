@@ -1,6 +1,7 @@
 use super::*;
 
 use crate::caption::{CaptionHighlightMode, CaptionSource};
+use crate::look::AnimationSlot;
 use crate::time::{Rational, RationalTime};
 
 const R30: Rational = Rational::FPS_30;
@@ -534,6 +535,66 @@ fn split_cue_partitions_text_and_word_timings() {
         .map(|clip| clip.caption.as_ref().unwrap().index)
         .collect();
     assert_eq!(indices, vec![0, 1, 2]);
+}
+
+/// Put the karaoke look's entrance and an exit on a cue, the way a template
+/// writes its animations through to every line.
+fn animate(project: &mut Project, clip: ClipId) {
+    project
+        .set_clip_animation(
+            clip,
+            AnimationSlot::In,
+            Some(AnimationRef::new("char_pop_in")),
+        )
+        .unwrap();
+    project
+        .set_clip_animation(
+            clip,
+            AnimationSlot::Out,
+            Some(AnimationRef::new("char_fade_out")),
+        )
+        .unwrap();
+}
+
+#[test]
+fn an_animated_cue_splits_and_both_halves_keep_the_look() {
+    let (mut project, track, cues) = captioned();
+    let (_, clips) = add(&mut project, track, &cues);
+    animate(&mut project, clips[0]);
+
+    // Cue 0 holds one second; either half is too short for the half-second
+    // entrance window, which is what a general split refuses to re-time.
+    let right = project.split_caption_cue(clips[0], rt(15)).unwrap();
+
+    for (clip_id, text) in [(clips[0], "hello"), (right, "world")] {
+        let clip = project.clip(clip_id).unwrap();
+        assert_eq!(clip.text_content(), Some(text));
+        assert_eq!(
+            clip.animation_in.as_ref().map(|a| a.id.as_str()),
+            Some("char_pop_in"),
+            "{text} plays the entrance in full"
+        );
+        assert_eq!(
+            clip.animation_out.as_ref().map(|a| a.id.as_str()),
+            Some("char_fade_out"),
+            "{text} keeps the exit"
+        );
+    }
+}
+
+#[test]
+fn a_refused_split_leaves_the_cue_animated() {
+    let (mut project, track, cues) = captioned();
+    let (_, clips) = add(&mut project, track, &cues);
+    animate(&mut project, clips[0]);
+
+    // A cut on the cue's own start is not a split at all.
+    assert!(project.split_caption_cue(clips[0], rt(0)).is_err());
+
+    let clip = project.clip(clips[0]).unwrap();
+    assert!(clip.animation_in.is_some(), "the entrance came back");
+    assert!(clip.animation_out.is_some(), "so did the exit");
+    assert_eq!(clip.text_content(), Some("hello world"));
 }
 
 #[test]

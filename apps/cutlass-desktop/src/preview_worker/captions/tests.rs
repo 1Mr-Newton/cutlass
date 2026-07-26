@@ -27,8 +27,9 @@ fn cues(engine: &Engine, spans: &[(i64, i64)]) -> Vec<CaptionCueSpec> {
         .collect()
 }
 
-/// One four-second cue, four words of one second each, on a fresh text lane.
-fn group_with_one_long_cue(engine: &mut Engine) -> CaptionGroupId {
+/// One four-second cue, four words of one second each, on a fresh text lane,
+/// optionally in a catalog template's look.
+fn group_with_one_long_cue(engine: &mut Engine, template: Option<&str>) -> CaptionGroupId {
     let track = create_track(engine, TrackKind::Text, 0).expect("text lane");
     let rate = engine.project().timeline().frame_rate;
     let text = "alpha bravo charlie delta";
@@ -38,9 +39,13 @@ fn group_with_one_long_cue(engine: &mut Engine) -> CaptionGroupId {
         CaptionWord::new(2_000, 3_000, 12..19),
         CaptionWord::new(3_000, 4_000, 20..25),
     ];
+    let mut spec = CaptionGroupSpec::manual(track, "Captions");
+    if let Some(template) = template {
+        spec = spec.with_template(template);
+    }
     let outcome = engine
         .apply(Command::Edit(EditCommand::AddCaptionGroup {
-            group: Box::new(CaptionGroupSpec::manual(track, "Captions")),
+            group: Box::new(spec),
             cues: vec![
                 CaptionCueSpec::new(text, TimeRange::at_rate(0, 120, rate)).with_words(words),
             ],
@@ -73,7 +78,7 @@ fn layout(max_chars_per_line: u16, max_lines: u8) -> CaptionLayout {
 #[test]
 fn a_one_line_budget_cuts_a_long_cue_into_one_cue_per_line() {
     let mut engine = Engine::new(EngineConfig::default()).expect("engine");
-    let group = group_with_one_long_cue(&mut engine);
+    let group = group_with_one_long_cue(&mut engine, None);
 
     reflow_cues(&mut engine, group, layout(7, 1));
 
@@ -86,7 +91,7 @@ fn a_one_line_budget_cuts_a_long_cue_into_one_cue_per_line() {
 #[test]
 fn a_two_line_budget_halves_the_cue_and_keeps_two_lines_each() {
     let mut engine = Engine::new(EngineConfig::default()).expect("engine");
-    let group = group_with_one_long_cue(&mut engine);
+    let group = group_with_one_long_cue(&mut engine, None);
 
     reflow_cues(&mut engine, group, layout(7, 2));
 
@@ -99,7 +104,7 @@ fn a_two_line_budget_halves_the_cue_and_keeps_two_lines_each() {
 #[test]
 fn a_budget_the_cue_already_fits_only_rewraps_it() {
     let mut engine = Engine::new(EngineConfig::default()).expect("engine");
-    let group = group_with_one_long_cue(&mut engine);
+    let group = group_with_one_long_cue(&mut engine, None);
 
     reflow_cues(&mut engine, group, layout(64, 2));
 
@@ -109,7 +114,7 @@ fn a_budget_the_cue_already_fits_only_rewraps_it() {
 #[test]
 fn cut_cues_keep_the_word_timings_that_belong_to_them() {
     let mut engine = Engine::new(EngineConfig::default()).expect("engine");
-    let group = group_with_one_long_cue(&mut engine);
+    let group = group_with_one_long_cue(&mut engine, None);
 
     reflow_cues(&mut engine, group, layout(7, 1));
 
@@ -120,6 +125,28 @@ fn cut_cues_keep_the_word_timings_that_belong_to_them() {
         assert_eq!(cue.words.len(), 1, "{expected} kept one word");
         assert_eq!(cue.words[0].text(text), expected, "word range follows text");
         assert_eq!(cue.words[0].start_ms, 0, "timings rebase onto their cue");
+    }
+}
+
+#[test]
+fn an_animated_template_still_gets_cut_to_the_line_budget() {
+    let mut engine = Engine::new(EngineConfig::default()).expect("engine");
+    // Karaoke pop puts a per-character entrance on every cue, and each cut
+    // piece is shorter than that entrance's window — the case a general split
+    // refuses, which used to leave half the group over its line budget.
+    let group = group_with_one_long_cue(&mut engine, Some("karaoke_pop"));
+
+    reflow_cues(&mut engine, group, layout(7, 1));
+
+    assert_eq!(
+        cue_texts(&engine, group),
+        vec!["alpha", "bravo", "charlie", "delta"]
+    );
+    for clip in engine.project().timeline().caption_cues(group) {
+        assert!(
+            clip.animation_in.is_some(),
+            "every line still pops in on its own"
+        );
     }
 }
 
