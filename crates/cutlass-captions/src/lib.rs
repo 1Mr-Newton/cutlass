@@ -37,7 +37,7 @@ mod timing;
 mod vtt;
 
 pub use error::CaptionError;
-pub use reflow::{estimate_word_timings, rewrap, wrap};
+pub use reflow::{estimate_word_timings, overflow_cuts, rewrap, wrap};
 pub use segment::{DEFAULT_PAUSE_BREAK_MS, SegmentOptions, TimedWord, segment};
 pub use srt::{parse_srt, write_srt};
 pub use subtitle::{

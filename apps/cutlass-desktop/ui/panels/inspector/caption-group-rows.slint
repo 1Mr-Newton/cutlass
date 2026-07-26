@@ -161,7 +161,7 @@ export component CaptionGroupRows inherits VerticalLayout {
         reset-value: 2;
         commit(v) => {
             root.commit-layout(
-                root.group.max-chars-per-line, Math.round(v), root.group.safe-area-bottom, false);
+                root.group.max-chars-per-line, Math.round(v), root.group.safe-area-bottom, true);
         }
     }
 

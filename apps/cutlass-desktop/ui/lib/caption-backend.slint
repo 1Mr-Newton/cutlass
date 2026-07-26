@@ -73,8 +73,8 @@ export global CaptionBackend {
     // Group label shown in the inspector header and the cue list.
     callback set-label(group-id: string, label: string);
 
-    // Segmentation rules. `reflow` re-wraps every cue's line breaks to the
-    // new character limit (cue boundaries and timings are left alone).
+    // Segmentation rules. `reflow` re-flows every cue onto them: new line
+    // breaks, and a cue too long for the line budget is cut into several.
     callback set-layout(
         group-id: string,
         max-chars-per-line: int,

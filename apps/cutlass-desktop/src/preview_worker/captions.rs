@@ -7,7 +7,9 @@
 
 use super::*;
 
-use cutlass_captions::{ImportOptions, Placement, parse_subtitles, place_subtitles, wrap};
+use cutlass_captions::{
+    ImportOptions, Placement, overflow_cuts, parse_subtitles, place_subtitles, wrap,
+};
 use cutlass_models::{
     CaptionCueSpec, CaptionGroupId, CaptionGroupSpec, CaptionHighlight, CaptionHighlightMode,
     CaptionLayout, CaptionSource, CaptionStyle, CaptionStyleScope, MediaId, TextStyle,
@@ -91,7 +93,8 @@ pub enum CaptionOp {
         max_chars_per_line: u16,
         max_lines: u8,
         safe_area_bottom: f32,
-        /// Re-wrap every cue's line breaks to the new character limit.
+        /// Re-flow every cue onto the new rules: fresh line breaks, and a cut
+        /// for any cue that no longer fits the line budget.
         reflow: bool,
     },
     SetHighlight {
@@ -138,9 +141,7 @@ pub(super) fn caption_op(engine: &mut Engine, op: CaptionOp, ui: &UiSink) {
         CaptionOp::SetLabel { group, label } => with_group(engine, &group, ui, |group| {
             EditCommand::SetCaptionGroupLabel { group, label }
         }),
-        CaptionOp::SetTemplate { group, template } => with_group(engine, &group, ui, |group| {
-            EditCommand::SetCaptionGroupTemplate { group, template }
-        }),
+        CaptionOp::SetTemplate { group, template } => set_template(engine, &group, template, ui),
         CaptionOp::ApplyStyle {
             group,
             style,
@@ -553,9 +554,7 @@ fn apply_style(
     );
 }
 
-/// New segmentation rules, optionally re-wrapping the existing cues' line
-/// breaks to the new character limit. Cue boundaries and timings are left
-/// alone: re-splitting is a re-segment, not a layout change.
+/// New segmentation rules, optionally re-flowing the existing cues onto them.
 #[allow(clippy::too_many_arguments)]
 fn set_layout(
     engine: &mut Engine,
@@ -582,7 +581,7 @@ fn set_layout(
             .layout
     };
 
-    // One history entry for the whole gesture: the rules and every re-wrapped
+    // One history entry for the whole gesture: the rules and every re-flowed
     // line undo together.
     engine.begin_group();
     if let Err(e) = engine.apply(Command::Edit(EditCommand::SetCaptionGroupLayout {
@@ -595,30 +594,116 @@ fn set_layout(
     }
 
     if reflow {
-        let rewrapped: Vec<(ClipId, String)> = engine
-            .project()
-            .timeline()
-            .caption_cues(group_id)
-            .into_iter()
-            .filter_map(|clip| {
-                let text = clip.text_content()?;
-                let wrapped = wrap(text, max_chars_per_line);
-                (wrapped != text).then_some((clip.id, wrapped))
-            })
-            .collect();
-        for (clip, text) in rewrapped {
-            if let Err(e) = engine.apply(Command::Edit(EditCommand::SetCaptionCue {
-                clip,
-                text,
-                words: None,
-                speaker: None,
-            })) {
-                warn!(%clip, "caption reflow skipped a cue: {e}");
-            }
-        }
+        reflow_cues(engine, group_id, layout);
     }
     engine.commit_group();
     publish_projection(engine, ui);
+}
+
+/// Switch a group to a catalog template and re-flow its cues onto the line
+/// rules that template carries. A look is its typography *and* its line
+/// budget — Outline's single 20-character line is the look — so leaving the
+/// cues wrapped for the previous template would only half-apply it.
+fn set_template(engine: &mut Engine, group: &str, template: String, ui: &UiSink) {
+    let Some(group_id) = caption_group_id(engine, group) else {
+        error!(group, "caption template ignored: unknown caption group");
+        return;
+    };
+    engine.begin_group();
+    if let Err(e) = engine.apply(Command::Edit(EditCommand::SetCaptionGroupTemplate {
+        group: group_id,
+        template,
+    })) {
+        error!(group, "caption template failed: {e}");
+        engine.rollback_group();
+        return;
+    }
+    let layout = engine
+        .project()
+        .timeline()
+        .caption_group(group_id)
+        .expect("caption_group_id returned an existing group")
+        .layout;
+    reflow_cues(engine, group_id, layout);
+    engine.commit_group();
+    publish_projection(engine, ui);
+}
+
+/// Re-flow a group's cues onto `layout`: cut every cue the line budget no
+/// longer holds, then wrap what is left to the character limit.
+///
+/// The two limits only mean anything together — a one-line budget at 16
+/// characters is a request for short cues, not for a cue that quietly grows a
+/// fifth line — so a shrunken budget re-times the group rather than being
+/// ignored. Cutting comes first so the new pieces are wrapped too, and a cue's
+/// cuts are applied back to front: every offset was measured against the cue
+/// as it stands, and splitting from the end leaves the earlier offsets, and
+/// the clip they address, untouched. Cues are only ever cut, never rejoined:
+/// a widened budget re-wraps the lines it has rather than guessing which
+/// neighbors used to be one line.
+///
+/// Assumes the caller is inside a history group.
+fn reflow_cues(engine: &mut Engine, group: CaptionGroupId, layout: CaptionLayout) {
+    let rate = engine.project().timeline().frame_rate;
+    let placement = Placement::at_rate(rate);
+    let cuts: Vec<(ClipId, Vec<i64>)> = engine
+        .project()
+        .timeline()
+        .caption_cues(group)
+        .into_iter()
+        .filter_map(|clip| {
+            let text = clip.text_content()?;
+            let words = clip
+                .caption
+                .as_ref()
+                .map(|cue| cue.words.as_slice())
+                .unwrap_or_default();
+            let start = clip.timeline.start.value;
+            let end = clip.timeline.end_tick();
+            let duration_ms = placement.ms(clip.timeline.duration.value);
+            let mut ticks: Vec<i64> = overflow_cuts(text, words, duration_ms, &layout)
+                .into_iter()
+                .map(|ms| start + placement.ticks(ms))
+                .filter(|tick| *tick > start && *tick < end)
+                .collect();
+            // Two cuts inside one frame round to the same tick; the second
+            // would only ask to split on a boundary that no longer exists.
+            ticks.dedup();
+            (!ticks.is_empty()).then_some((clip.id, ticks))
+        })
+        .collect();
+    for (clip, ticks) in cuts {
+        for tick in ticks.into_iter().rev() {
+            if let Err(e) = engine.apply(Command::Edit(EditCommand::SplitCaptionCue {
+                clip,
+                at: RationalTime::new(tick, rate),
+            })) {
+                warn!(%clip, tick, "caption reflow could not split an overlong cue: {e}");
+            }
+        }
+    }
+
+    let rewrapped: Vec<(ClipId, String)> = engine
+        .project()
+        .timeline()
+        .caption_cues(group)
+        .into_iter()
+        .filter_map(|clip| {
+            let text = clip.text_content()?;
+            let wrapped = wrap(text, layout.max_chars_per_line);
+            (wrapped != text).then_some((clip.id, wrapped))
+        })
+        .collect();
+    for (clip, text) in rewrapped {
+        if let Err(e) = engine.apply(Command::Edit(EditCommand::SetCaptionCue {
+            clip,
+            text,
+            words: None,
+            speaker: None,
+        })) {
+            warn!(%clip, "caption reflow skipped a cue: {e}");
+        }
+    }
 }
 
 fn set_highlight(

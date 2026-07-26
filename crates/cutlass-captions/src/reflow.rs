@@ -1,6 +1,6 @@
 // --- Line breaking and word retiming --------------------------------------------------
 
-use cutlass_models::CaptionWord;
+use cutlass_models::{CaptionLayout, CaptionWord};
 
 /// Greedily wrap `text` to `max_chars_per_line`, collapsing whatever
 /// whitespace it already has.
@@ -58,6 +58,62 @@ pub fn rewrap(
         })
         .collect();
     (wrapped, remapped)
+}
+
+/// Where a cue has to be cut to respect a layout's line budget.
+///
+/// `max_chars_per_line` decides where the lines fall and `max_lines` decides
+/// how many of them one cue may hold, so the two rules only mean something
+/// together: text that spills past the budget is not a cue that should be
+/// squeezed, it is more cues. Returns the clip-relative millisecond offsets
+/// where the spill starts, ascending, empty when the cue already fits.
+///
+/// Cuts land on word boundaries, taken from the cue's own timings. A cue
+/// without any (a hand-typed line) is cut on the same length-weighted estimate
+/// a subtitle file gets, spread across `duration_ms`.
+pub fn overflow_cuts(
+    text: &str,
+    words: &[CaptionWord],
+    duration_ms: u32,
+    layout: &CaptionLayout,
+) -> Vec<u32> {
+    let max_lines = usize::from(layout.max_lines.max(1));
+    let (wrapped, mut timings) = rewrap(text, words, layout.max_chars_per_line);
+    if timings.is_empty() {
+        timings = estimate_word_timings(&wrapped, 0, duration_ms);
+    }
+    if timings.is_empty() {
+        return Vec::new();
+    }
+
+    let mut cuts = Vec::new();
+    let mut latest = 0u32;
+    let mut next_word = 0usize;
+    for (index, line_start) in line_starts(&wrapped).enumerate() {
+        // Line starts ascend, so the word cursor only ever moves forward.
+        while timings
+            .get(next_word)
+            .is_some_and(|word| (word.range.start as usize) < line_start)
+        {
+            next_word += 1;
+        }
+        if index == 0 || index % max_lines != 0 {
+            continue;
+        }
+        let Some(word) = timings.get(next_word) else {
+            break;
+        };
+        if word.start_ms > latest {
+            cuts.push(word.start_ms);
+            latest = word.start_ms;
+        }
+    }
+    cuts
+}
+
+/// Byte offset of every line's first character, the empty string included.
+fn line_starts(text: &str) -> impl Iterator<Item = usize> + '_ {
+    std::iter::once(0).chain(text.match_indices('\n').map(|(index, _)| index + 1))
 }
 
 /// Spread `start_ms..end_ms` across the words of `text`, weighted by how long
@@ -244,6 +300,68 @@ mod tests {
         let (wrapped, remapped) = rewrap("the quick brown fox", &words, 10);
         assert_eq!(wrapped, "the quick\nbrown fox");
         assert_eq!(remapped[0].text(&wrapped), "quick\nbrown");
+    }
+
+    /// Four words, one second each, wrapping to one word per line at 6 chars.
+    fn four_lines() -> (&'static str, Vec<CaptionWord>) {
+        (
+            "alpha bravo charlie delta",
+            vec![
+                CaptionWord::new(0, 1_000, 0..5),
+                CaptionWord::new(1_000, 2_000, 6..11),
+                CaptionWord::new(2_000, 3_000, 12..19),
+                CaptionWord::new(3_000, 4_000, 20..25),
+            ],
+        )
+    }
+
+    fn layout(max_chars_per_line: u16, max_lines: u8) -> CaptionLayout {
+        CaptionLayout {
+            max_chars_per_line,
+            max_lines,
+            ..CaptionLayout::default()
+        }
+    }
+
+    #[test]
+    fn a_one_line_budget_cuts_at_every_line() {
+        let (text, words) = four_lines();
+        let cuts = overflow_cuts(text, &words, 4_000, &layout(7, 1));
+        assert_eq!(cuts, vec![1_000, 2_000, 3_000]);
+    }
+
+    #[test]
+    fn a_two_line_budget_cuts_at_every_other_line() {
+        let (text, words) = four_lines();
+        let cuts = overflow_cuts(text, &words, 4_000, &layout(7, 2));
+        assert_eq!(cuts, vec![2_000], "one cut, into two two-line cues");
+    }
+
+    #[test]
+    fn a_cue_that_already_fits_is_not_cut() {
+        let (text, words) = four_lines();
+        assert!(overflow_cuts(text, &words, 4_000, &layout(7, 4)).is_empty());
+        assert!(
+            overflow_cuts(text, &words, 4_000, &layout(64, 1)).is_empty(),
+            "one line at 64 chars holds the whole cue"
+        );
+    }
+
+    #[test]
+    fn a_cue_without_timings_is_cut_on_the_length_estimate() {
+        let (text, _) = four_lines();
+        let cuts = overflow_cuts(text, &[], 4_000, &layout(7, 1));
+        assert_eq!(cuts.len(), 3, "still three cuts, on estimated word times");
+        assert!(cuts[0] > 0 && cuts.windows(2).all(|w| w[1] > w[0]));
+    }
+
+    #[test]
+    fn cuts_are_measured_after_the_new_wrapping() {
+        // Stale line breaks from the old rule must not decide the cuts: this
+        // text arrives as two lines and has to come back as four.
+        let (_, words) = four_lines();
+        let cuts = overflow_cuts("alpha bravo\ncharlie delta", &words, 4_000, &layout(7, 1));
+        assert_eq!(cuts, vec![1_000, 2_000, 3_000]);
     }
 
     #[test]
