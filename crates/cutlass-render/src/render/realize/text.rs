@@ -1,7 +1,7 @@
 //! Text / glyph realize arms — bitmap (static) and per-character GPU glyphs.
 
 use cutlass_compositor::{
-    BlendMode, ColorGrade, LayerEffects, LayerPlacement, LayerStyles, RgbaImage,
+    BlendMode, ColorGrade, GlyphInstance, LayerEffects, LayerPlacement, LayerStyles, RgbaImage,
 };
 use cutlass_text::{TextRenderer, TextStyle};
 
@@ -102,7 +102,11 @@ pub(super) fn realize_text_layer(
             layer.rotation,
             layer.opacity,
         );
-        if instances.is_empty() {
+        // A per-character entrance holds every cluster at zero opacity on the
+        // run's first tick (and a clip can be keyframed transparent anywhere),
+        // which is a layer with nothing to draw — not a layer the compositor
+        // should refuse the whole frame over.
+        if !instances.iter().any(visible) {
             return None;
         }
         // Highlighted runs upload both paints as one glyph set and point the
@@ -194,6 +198,12 @@ pub(super) fn realize_text_layer(
             styles,
         })
     }
+}
+
+/// Whether one glyph instance would put ink on the canvas — the same test the
+/// compositor applies before it uploads an instance.
+fn visible(instance: &GlyphInstance) -> bool {
+    instance.opacity > 0.0 && instance.size[0] > 0.0 && instance.size[1] > 0.0
 }
 
 /// Paint the run for a sampled caption highlight.
